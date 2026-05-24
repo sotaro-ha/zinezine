@@ -19,12 +19,14 @@ export default function TripExperience({
   photos,
   total,
   withGps,
+  isOwner = false,
 }: {
   title: string;
   description: string | null;
   photos: PhotoWithUrl[];
   total: number;
   withGps: number;
+  isOwner?: boolean;
 }) {
   const [view, setView] = useState<View>('map');
   const [cutoff, setCutoff] = useState<number | null>(null);
@@ -66,21 +68,31 @@ export default function TripExperience({
           </p>
         </div>
 
-        <div className="pointer-events-auto flex rounded-full border border-border bg-card/85 p-0.5 text-sm shadow-[var(--shadow-card)] backdrop-blur">
-          {(['map', 'zine'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setView(v)}
-              className={`rounded-full px-4 py-1.5 transition ${
-                view === v
-                  ? 'bg-accent text-accent-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
+        <div className="pointer-events-auto flex items-center gap-2">
+          {isOwner && (
+            <a
+              href="#uploader"
+              className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-foreground shadow-[var(--shadow-card)] backdrop-blur transition hover:shadow-[var(--shadow-float)]"
             >
-              {v === 'map' ? 'マップ' : 'zine'}
-            </button>
-          ))}
+              ＋ 追加
+            </a>
+          )}
+          <div className="flex rounded-full border border-border bg-card/85 p-0.5 text-sm shadow-[var(--shadow-card)] backdrop-blur">
+            {(['map', 'zine'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                className={`rounded-full px-4 py-1.5 transition ${
+                  view === v
+                    ? 'bg-accent text-accent-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {v === 'map' ? 'マップ' : 'zine'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
