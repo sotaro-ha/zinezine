@@ -2,16 +2,24 @@
 
 import PhotoMap from '@/components/Map';
 import Timeline from '@/components/Timeline';
+import TimelineView from '@/components/TimelineView';
 import ZinePreview from '@/components/ZinePreview';
 import type { PhotoWithUrl } from '@/types/photo';
 import Link from 'next/link';
 import { useState } from 'react';
 
-type View = 'map' | 'zine';
+type View = 'map' | 'timeline' | 'zine';
+
+const VIEW_LABELS: Record<View, string> = {
+  map: 'マップ',
+  timeline: 'タイムライン',
+  zine: 'zine',
+};
 
 /**
  * 旅程詳細の全画面体験（クライアント）。
- * ヘッダーで マップ / zine を切り替え、マップ側は撮影時刻のシークバーで「旅を再生」する。
+ * ヘッダーで マップ / タイムライン / zine を切り替え、
+ * マップ側は撮影時刻のシークバーで「旅を再生」する。
  */
 export default function TripExperience({
   title,
@@ -19,6 +27,7 @@ export default function TripExperience({
   photos,
   total,
   withGps,
+  tripId,
   isOwner = false,
 }: {
   title: string;
@@ -26,6 +35,7 @@ export default function TripExperience({
   photos: PhotoWithUrl[];
   total: number;
   withGps: number;
+  tripId: string;
   isOwner?: boolean;
 }) {
   const [view, setView] = useState<View>('map');
@@ -49,6 +59,8 @@ export default function TripExperience({
             </div>
           </div>
         </>
+      ) : view === 'timeline' ? (
+        <TimelineView tripId={tripId} photos={photos} isOwner={isOwner} />
       ) : (
         <ZinePreview title={title} description={description} photos={photos} />
       )}
@@ -78,18 +90,18 @@ export default function TripExperience({
             </a>
           )}
           <div className="flex rounded-full border border-border bg-card/85 p-0.5 text-sm shadow-[var(--shadow-card)] backdrop-blur">
-            {(['map', 'zine'] as const).map((v) => (
+            {(['map', 'timeline', 'zine'] as const).map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setView(v)}
-                className={`rounded-full px-4 py-1.5 transition ${
+                className={`rounded-full px-3.5 py-1.5 transition ${
                   view === v
                     ? 'bg-accent text-accent-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {v === 'map' ? 'マップ' : 'zine'}
+                {VIEW_LABELS[v]}
               </button>
             ))}
           </div>

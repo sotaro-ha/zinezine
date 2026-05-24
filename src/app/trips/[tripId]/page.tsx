@@ -1,4 +1,3 @@
-import PhotoManager from '@/components/PhotoManager';
 import PhotoUploader from '@/components/PhotoUploader';
 import ShareManager from '@/components/ShareManager';
 import TripExperience from '@/components/TripExperience';
@@ -53,6 +52,7 @@ export default async function TripDetailPage({
           photos={photos}
           total={photos.length}
           withGps={withGps}
+          tripId={tripId}
           isOwner={isOwner}
         />
       </section>
@@ -70,17 +70,6 @@ export default async function TripDetailPage({
               </p>
               <PhotoUploader tripId={tripId} />
             </section>
-
-            {photos.length > 0 && (
-              <section className="surface space-y-3 p-6">
-                <h2 className="font-serif text-2xl">写真を管理</h2>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  不要な写真を削除できます（地図・zine からも消えます）。GPS
-                  が無い写真はマップに出ないので、必要に応じて整理してください。
-                </p>
-                <PhotoManager tripId={tripId} photos={photos} />
-              </section>
-            )}
 
             <section className="surface space-y-3 p-6">
               <h2 className="font-serif text-2xl">共有</h2>

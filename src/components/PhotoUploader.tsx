@@ -22,7 +22,7 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
   const [items, setItems] = useState<Item[]>([]);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [result, setResult] = useState<{ added: number; gps: number; failed: number } | null>(null);
 
   const update = (idx: number, patch: Partial<Item>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
@@ -114,22 +114,18 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
       }));
       setItems(list);
       setBusy(true);
-      setToast(null);
+      setResult(null);
       await runPool(list, user.id);
       setBusy(false);
 
-      // 完了フィードバック（GPS 付きは地図に出る旨を伝える）
+      // 完了フィードバック（ポップアップで結果を表示）
       setItems((prev) => {
         const ok = prev.filter((i) => i.status === 'done');
         const gps = ok.filter((i) => i.hasGps).length;
-        setToast(
-          gps > 0
-            ? `${ok.length} 枚を追加（うち ${gps} 枚が地図に出ます）`
-            : `${ok.length} 枚を追加しました`,
-        );
+        const failed = prev.filter((i) => i.status === 'error').length;
+        setResult({ added: ok.length, gps, failed });
         return prev;
       });
-      window.setTimeout(() => setToast(null), 4000);
 
       // サーバーコンポーネントを再取得して地図に反映（新しいピンが落ちてくる）
       router.refresh();
@@ -148,11 +144,29 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
 
   return (
     <section className="space-y-6">
-      {toast && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
-          <div className="toast-in flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground shadow-[var(--shadow-float)]">
-            <span>✦</span>
-            {toast}
+      {result && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="閉じる"
+            onClick={() => setResult(null)}
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+          />
+          <div className="toast-in surface relative z-10 w-full max-w-sm space-y-4 p-7 text-center">
+            <div className="badge-pop mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent/10 text-2xl text-accent">
+              ✓
+            </div>
+            <h3 className="font-serif text-2xl">アップロード完了</h3>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {result.added} 枚を追加しました。
+              {result.gps > 0
+                ? ` うち ${result.gps} 枚が地図に表示されます。`
+                : ' GPS 付きの写真がなかったため、地図には表示されません。'}
+              {result.failed > 0 ? ` （${result.failed} 枚は失敗しました）` : ''}
+            </p>
+            <button type="button" onClick={() => setResult(null)} className="btn-accent w-full">
+              閉じる
+            </button>
           </div>
         </div>
       )}
