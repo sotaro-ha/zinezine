@@ -53,6 +53,7 @@ export default function TimelineView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cols, setCols] = useState(1); // 写真の大きさ（1=大きい … 3=小さい）
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -112,11 +113,30 @@ export default function TimelineView({
   return (
     <div className="h-full overflow-y-auto px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-2xl space-y-6">
-        {/* ツールバー（所有者のみ） */}
-        {isOwner && (
-          <div className="sticky top-0 z-20 flex items-center justify-between gap-2 rounded-2xl border border-border bg-card/85 px-3 py-2 backdrop-blur">
-            {selecting ? (
-              <>
+        {/* ツールバー */}
+        <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card/85 px-3 py-2 backdrop-blur">
+          {/* 大きさスライダー */}
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span aria-hidden>▦</span>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={1}
+              value={4 - cols}
+              onChange={(e) => setCols(4 - Number(e.target.value))}
+              className="timeline-range w-24"
+              aria-label="写真の大きさ"
+            />
+            <span aria-hidden className="text-base">
+              ⬚
+            </span>
+          </label>
+
+          {/* 選択 / 削除（所有者のみ） */}
+          {isOwner &&
+            (selecting ? (
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={toggleAll}
@@ -124,39 +144,33 @@ export default function TimelineView({
                 >
                   {allSelected ? '全解除' : '全選択'}
                 </button>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">{selected.size} 枚選択</span>
-                  <button
-                    type="button"
-                    disabled={selected.size === 0 || busy}
-                    onClick={() => removeMany(selectedPhotos)}
-                    className="rounded-full bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground transition disabled:opacity-50"
-                  >
-                    {busy ? '削除中…' : '削除'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={exitSelect}
-                    className="rounded-full border border-border px-3 py-1.5 text-sm"
-                  >
-                    やめる
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <span className="text-sm text-muted-foreground">{photos.length} 枚</span>
+                <span className="text-sm text-muted-foreground">{selected.size} 枚</span>
                 <button
                   type="button"
-                  onClick={() => setSelecting(true)}
-                  className="rounded-full border border-border px-4 py-1.5 text-sm transition hover:border-accent/40 hover:text-accent"
+                  disabled={selected.size === 0 || busy}
+                  onClick={() => removeMany(selectedPhotos)}
+                  className="rounded-full bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground transition disabled:opacity-50"
                 >
-                  選択
+                  {busy ? '削除中…' : '削除'}
                 </button>
-              </>
-            )}
-          </div>
-        )}
+                <button
+                  type="button"
+                  onClick={exitSelect}
+                  className="rounded-full border border-border px-3 py-1.5 text-sm"
+                >
+                  やめる
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSelecting(true)}
+                className="rounded-full border border-border px-4 py-1.5 text-sm transition hover:border-accent/40 hover:text-accent"
+              >
+                選択
+              </button>
+            ))}
+        </div>
 
         {error && (
           <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-2 text-sm text-destructive">
@@ -176,8 +190,11 @@ export default function TimelineView({
                 </div>
               </div>
 
-              {/* 右: 大きな写真 */}
-              <div className="min-w-0 flex-1 space-y-5">
+              {/* 右: 写真（大きさはスライダーで） */}
+              <div
+                className="grid min-w-0 flex-1 gap-3"
+                style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+              >
                 {g.items.map((p, i) => {
                   const noGps = p.lat == null || p.lng == null;
                   const isSel = selected.has(p.id);
@@ -198,10 +215,16 @@ export default function TimelineView({
                           alt={timeLabel(p)}
                           loading="lazy"
                           decoding="async"
-                          className="block max-h-[78vh] w-full object-cover"
+                          className={`block w-full object-cover ${
+                            cols === 1 ? 'max-h-[78vh]' : 'aspect-square'
+                          }`}
                         />
                       ) : (
-                        <div className="flex aspect-[4/3] w-full items-center justify-center bg-secondary text-2xl text-accent/40">
+                        <div
+                          className={`flex w-full items-center justify-center bg-secondary text-2xl text-accent/40 ${
+                            cols === 1 ? 'aspect-[4/3]' : 'aspect-square'
+                          }`}
+                        >
                           ✦
                         </div>
                       )}

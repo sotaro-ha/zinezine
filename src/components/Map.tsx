@@ -23,8 +23,9 @@ function isVisible(p: PhotoWithUrl, cutoff: number | null): boolean {
 }
 
 /**
- * 写真の地図。多数の写真でも軽いよう GeoJSON + クラスタリングで描画する
- * （DOM マーカーは使わない）。ピンをクリックするとサムネのポップアップが出る。
+ * 写真の地図。多数でも軽いよう GeoJSON + クラスタリングで管理しつつ、
+ * クラスタ／単体ピンは「代表写真のサムネ」を HTML マーカーで描く（数字ではなく写真）。
+ * 画面内に出るマーカーだけ生成するので、写真が増えても軽い。
  */
 export default function PhotoMap({
   photos,
@@ -37,13 +38,18 @@ export default function PhotoMap({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const loadedRef = useRef(false);
   const byId = useRef(new globalThis.Map<string, GeoPhoto>());
+  const markers = useRef<Record<string, maplibregl.Marker>>({});
+  const onScreen = useRef<Record<string, maplibregl.Marker>>({});
+  const clusterRep = useRef(new globalThis.Map<number, string>());
 
-  // 初期化（photos が変わったら親が key で再マウントする）
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const geo = photos.filter((p): p is GeoPhoto => p.lat != null && p.lng != null);
     byId.current = new globalThis.Map(geo.map((p) => [p.id, p]));
+    markers.current = {};
+    onScreen.current = {};
+    clusterRep.current = new globalThis.Map();
 
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -58,7 +64,6 @@ export default function PhotoMap({
       loadedRef.current = true;
       if (geo.length === 0) return;
 
-      // 旅程ライン
       map.addSource('route', {
         type: 'geojson',
         data: {
@@ -75,110 +80,165 @@ export default function PhotoMap({
         paint: { 'line-color': '#0a4a4e', 'line-width': 3, 'line-opacity': 0.4 },
       });
 
-      // 写真ポイント（クラスタリング有効）
       map.addSource('photos', {
         type: 'geojson',
         cluster: true,
-        clusterRadius: 48,
-        clusterMaxZoom: 15,
+        clusterRadius: 60,
+        clusterMaxZoom: 16,
         data: { type: 'FeatureCollection', features: [] },
       });
-
-      // クラスタ（束ねた円。枚数で大きさを変える）
+      // ソースをタイル化させるための不可視レイヤー（描画は HTML マーカーで行う）
       map.addLayer({
-        id: 'clusters',
+        id: 'photos-src',
         type: 'circle',
         source: 'photos',
-        filter: ['has', 'point_count'],
-        paint: {
-          'circle-color': '#0a4a4e',
-          'circle-opacity': 0.9,
-          'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 50, 30],
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#ffffff',
-        },
-      });
-      map.addLayer({
-        id: 'cluster-count',
-        type: 'symbol',
-        source: 'photos',
-        filter: ['has', 'point_count'],
-        layout: {
-          'text-field': ['get', 'point_count_abbreviated'],
-          'text-font': ['Noto Sans Bold'],
-          'text-size': 13,
-        },
-        paint: { 'text-color': '#ffffff' },
+        paint: { 'circle-radius': 0, 'circle-opacity': 0 },
       });
 
-      // 個別ピン（白丸 + teal リング）
-      map.addLayer({
-        id: 'unclustered',
-        type: 'circle',
-        source: 'photos',
-        filter: ['!', ['has', 'point_count']],
-        paint: {
-          'circle-color': '#ffffff',
-          'circle-radius': 7,
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#0a4a4e',
-        },
-      });
-
-      // クラスタをクリック → 展開ズーム
-      map.on('click', 'clusters', async (e) => {
-        const f = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0];
-        if (!f) return;
-        const clusterId = f.properties?.cluster_id;
-        const src = map.getSource('photos') as maplibregl.GeoJSONSource;
-        const zoom = await src.getClusterExpansionZoom(clusterId);
-        map.easeTo({ center: (f.geometry as GeoJSON.Point).coordinates as [number, number], zoom });
-      });
-
-      // 個別ピンをクリック → ポップアップ
-      map.on('click', 'unclustered', (e) => {
-        const f = e.features?.[0];
-        if (!f) return;
-        const photo = byId.current.get(f.properties?.id as string);
-        if (!photo) return;
-        new maplibregl.Popup({ closeButton: true, maxWidth: '240px', offset: 14 })
-          .setLngLat((f.geometry as GeoJSON.Point).coordinates as [number, number])
-          .setHTML(buildPopupHTML(photo))
-          .addTo(map);
-      });
-
-      for (const layer of ['clusters', 'unclustered']) {
-        map.on('mouseenter', layer, () => {
-          map.getCanvas().style.cursor = 'pointer';
-        });
-        map.on('mouseleave', layer, () => {
-          map.getCanvas().style.cursor = '';
-        });
-      }
-
-      // 全ピンが収まるように
       const bounds = new maplibregl.LngLatBounds();
-      for (const p of geo) {
-        bounds.extend([p.lng, p.lat]);
-      }
+      for (const p of geo) bounds.extend([p.lng, p.lat]);
       map.fitBounds(bounds, { padding: 70, maxZoom: 14, duration: 0 });
 
+      map.on('render', updateMarkers);
       applyCutoff(cutoff);
     });
 
     return () => {
       loadedRef.current = false;
+      for (const m of Object.values(markers.current)) m.remove();
+      markers.current = {};
+      onScreen.current = {};
       map.remove();
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photos]);
 
-  // cutoff に応じてポイントとラインを更新
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (loadedRef.current) applyCutoff(cutoff);
   }, [cutoff]);
+
+  /** サムネ画像（無ければ ✦ プレースホルダ）を持つ円形 DOM を作る */
+  function fillThumb(el: HTMLElement, url: string | undefined) {
+    if (url) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = '';
+      img.loading = 'lazy';
+      el.appendChild(img);
+    } else {
+      el.textContent = '✦';
+    }
+  }
+
+  function makePointEl(photo: GeoPhoto): HTMLButtonElement {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'photo-pin';
+    el.setAttribute('aria-label', '写真を表示');
+    fillThumb(el, photo.thumb_url || photo.url);
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const map = mapRef.current;
+      if (!map) return;
+      new maplibregl.Popup({ closeButton: true, maxWidth: '240px', offset: 16 })
+        .setLngLat([photo.lng, photo.lat])
+        .setHTML(buildPopupHTML(photo))
+        .addTo(map);
+    });
+    return el;
+  }
+
+  function makeClusterEl(clusterId: number, count: number): HTMLButtonElement {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'photo-cluster';
+    el.setAttribute('aria-label', `${count} 枚の写真`);
+
+    const thumb = document.createElement('span');
+    thumb.className = 'photo-cluster-thumb';
+    el.appendChild(thumb);
+
+    const badge = document.createElement('span');
+    badge.className = 'photo-cluster-badge';
+    badge.textContent = String(count);
+    el.appendChild(badge);
+
+    // 代表写真（クラスタの先頭の葉）を遅延取得してはめ込む
+    const cached = clusterRep.current.get(clusterId);
+    if (cached !== undefined) {
+      fillThumb(thumb, cached || undefined);
+    } else {
+      const map = mapRef.current;
+      const src = map?.getSource('photos') as maplibregl.GeoJSONSource | undefined;
+      src
+        ?.getClusterLeaves(clusterId, 1, 0)
+        .then((leaves) => {
+          const leaf = leaves?.[0];
+          const photo = leaf ? byId.current.get(leaf.properties?.id as string) : undefined;
+          const url = photo?.thumb_url || photo?.url || '';
+          clusterRep.current.set(clusterId, url);
+          fillThumb(thumb, url || undefined);
+        })
+        .catch(() => {});
+    }
+
+    el.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const map = mapRef.current;
+      const src = map?.getSource('photos') as maplibregl.GeoJSONSource | undefined;
+      if (!map || !src) return;
+      const zoom = await src.getClusterExpansionZoom(clusterId);
+      const leaves = await src.getClusterLeaves(clusterId, 1, 0);
+      const leaf = leaves?.[0];
+      const coords = leaf
+        ? ((leaf.geometry as GeoJSON.Point).coordinates as [number, number])
+        : map.getCenter().toArray();
+      map.easeTo({ center: coords as [number, number], zoom });
+    });
+    return el;
+  }
+
+  /** 画面内のクラスタ／点に対応する HTML マーカーを増減させる */
+  function updateMarkers() {
+    const map = mapRef.current;
+    if (!map || !map.isSourceLoaded('photos')) return;
+
+    const features = map.querySourceFeatures('photos');
+    const next: Record<string, maplibregl.Marker> = {};
+
+    for (const f of features) {
+      const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+      const props = f.properties ?? {};
+      const isCluster = Boolean(props.cluster);
+      const key = isCluster ? `c${props.cluster_id}` : `p${props.id}`;
+      if (next[key]) continue;
+
+      let marker = markers.current[key];
+      if (!marker) {
+        const el = isCluster
+          ? makeClusterEl(props.cluster_id as number, props.point_count as number)
+          : (() => {
+              const photo = byId.current.get(props.id as string);
+              return photo ? makePointEl(photo) : null;
+            })();
+        if (!el) continue;
+        marker = new maplibregl.Marker({
+          element: el,
+          anchor: isCluster ? 'center' : 'bottom',
+        }).setLngLat(coords);
+        markers.current[key] = marker;
+      }
+      next[key] = marker;
+      if (!onScreen.current[key]) marker.addTo(map);
+    }
+
+    for (const key of Object.keys(onScreen.current)) {
+      if (!next[key]) onScreen.current[key].remove();
+    }
+    onScreen.current = next;
+  }
 
   function applyCutoff(cut: number | null) {
     const map = mapRef.current;
@@ -197,6 +257,7 @@ export default function PhotoMap({
             properties: { id: p.id },
           })),
       });
+      clusterRep.current.clear(); // cluster_id が振り直されるため代表キャッシュを破棄
     }
 
     const routeSrc = map.getSource('route') as maplibregl.GeoJSONSource | undefined;
