@@ -18,6 +18,18 @@ Firebase（NoSQL で将来の旅程解析クエリが書きにくい）と Verce
 
 ユーザー依頼により、別プロジェクト `vibemayfes` の構造を踏襲。`AGENTS.md` をエントリポイント、`memory/` プロトコルで決定の忘却を防ぐ、`.claude/rules` + `.claude/skills`、Biome、shadcn/ui（`components.json` + `tailwind.config.ts`）、`src/` レイアウト。Tailwind は `vibemayfes` に合わせ v4 → **v3** に変更（config ファイル + HSL CSS 変数 + autoprefixer）。Next/React は新しめを維持（Next 16 / React 19）。
 
+## 2026-05-25 — 認証は Supabase Auth の Google のみ + 管理者許可リスト
+
+ユーザー依頼により認証は Google OAuth のみ。Supabase Auth を使い、`@supabase/ssr` の cookie ベース SSR（`getServerSupabase` を async 化、`src/middleware.ts` でセッション更新 + ルート保護）。「とりあえず管理者だけ」を `ADMIN_EMAILS`（サーバー専用 env、カンマ/空白区切り）の許可リストで実現。**fail-closed**: 未設定なら誰もログインできない。誰でも Google ログインは試せるが、許可リスト外は middleware が即サインアウトして `/login?error=not_admin` へ。Firebase Auth ではなく Supabase Auth にしたのはバックエンドが Supabase で一貫するため。
+
+## 2026-05-25 — RLS は所有者スコープ、管理者限定はアプリ層
+
+`trips`/`photos` の RLS は `auth.uid() = user_id`（各自の行のみ）。「管理者のみ」は DB ではなくアプリ層（`ADMIN_EMAILS`）で担保。理由: 将来一般ユーザーへ開放する際、RLS は所有者スコープのままでよく、アプリ層のゲートを外すだけで済む。Storage `photos` は Public read（表示 URL を公開で使う）+ authenticated insert + 所有者 delete。
+
+## 2026-05-25 — 画面構成と写真の旅程紐付け
+
+最小画面: `/login`・`/trips`（一覧）・`/trips/new`（作成）・`/trips/[id]`（地図+画像追加）。`/` は `/trips` へリダイレクト。写真は必ず旅程（`trip_id`）に属し、`photos.user_id`/`trip_id` を not null/FK 化（旧 MVP の nullable から変更）。アップロードは従来どおりブラウザ直 upload（EXIF はブラウザ内）だが、`user_id`/`trip_id` を付与し storage パスを `userId/tripId/uuid-name` に整理。旧 `/upload`（旅程なし一括アップロード）は撤去。
+
 ## 2026-05-25 — 仕様の正本は `req.md`（docs/ へ移動しない）
 
 `vibemayfes` は `docs/開発仕様書.md` を正本とするが、本プロジェクトでは既存の `req.md` をそのまま正本とし、`AGENTS.md` から参照する。`docs/` ディレクトリは将来の補助資料用に用意。

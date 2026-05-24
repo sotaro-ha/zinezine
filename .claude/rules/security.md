@@ -9,7 +9,7 @@
   - 将来導入するサービスロールキー等は **`NEXT_PUBLIC_` を付けず**、サーバー側でのみ参照する。
   - `'use client'` ファイルでサーバー秘密情報を `process.env` 経由で参照しない。
 - **秘密情報をコミットしない。** `.env` / `.env.local` は `.gitignore` 済み。ハードコードされた鍵は一切禁止（`req.md` 禁止事項）。
-- Supabase Storage バケットは Public read。アップロードは anon。将来 RLS で `trip_id` / `user_id` ベースに絞る前提でコメントを残す。
+- Supabase Storage バケットは Public read。アップロードは 非公開＋署名付きURL＋所有者/共有スコープ。将来 RLS で `trip_id` / `user_id` ベースに絞る前提でコメントを残す。
 
 ## npm サプライチェーン対策（2025-2026 の Shai-Hulud 等）
 

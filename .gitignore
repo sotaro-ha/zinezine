@@ -21,3 +21,7 @@ tsconfig.tsbuildinfo
 # os / editor
 .DS_Store
 *.log
+.vercel
+
+# 別リポジトリ（プロジェクト外のスキル集）
+skills/

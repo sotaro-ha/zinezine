@@ -38,38 +38,21 @@ git add package-lock.json && git commit -m "add lockfile"   # lockfile は必ず
 ### 2. Supabase プロジェクト作成
 
 1. <https://supabase.com> でプロジェクトを作成
-2. SQL Editor で下記 SQL を実行（テーブル + インデックス + RLS）
-3. Storage で `photos` バケットを作成し **Public** に設定
-4. Project Settings → API から `Project URL` と `anon public` キーを控える
+2. SQL Editor で **`docs/schema.sql`** を実行（`trips` / `photos` テーブル + インデックス + RLS + Storage ポリシー）
+3. Storage で `photos` バケットを作成し **Public**（read）に設定
+4. **Authentication → Providers → Google** を有効化（下記「Google 認証」参照）
+5. Project Settings → API から `Project URL` と `anon public` キーを控える
 
-#### セットアップ SQL
+> スキーマは `docs/schema.sql` が正本。RLS は `auth.uid()` ベースで、各ユーザーは自分の `trips`/`photos` のみ操作できる。「管理者のみ利用可」はアプリ層の `ADMIN_EMAILS` 許可リストで担保する。
 
-```sql
-create table photos (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid,          -- 将来の認証用。MVP では null
-  trip_id uuid,          -- 将来のグループ/旅行単位。MVP では null
-  storage_path text not null,
-  lat double precision,  -- GPS が無い写真も許容するため nullable
-  lng double precision,
-  taken_at timestamptz,  -- EXIF DateTimeOriginal
-  width int,
-  height int,
-  created_at timestamptz default now()
-);
+#### Google 認証のセットアップ
 
-create index photos_taken_at_idx on photos(taken_at);
-create index photos_geo_idx on photos(lat, lng);
-
--- MVP: anon で insert/select 可能。
--- 将来は trip_id/user_id ベースのポリシーに切り替える（RLS は有効のまま絞る）。
-alter table photos enable row level security;
-create policy "anon read"   on photos for select using (true);
-create policy "anon insert" on photos for insert with check (true);
-```
-
-Storage バケット `photos` も Public read を許可し、anon で insert できるようにする
-（バケットのポリシーで `insert` / `select` を anon に許可）。
+1. Google Cloud Console で OAuth 2.0 クライアント（種別: ウェブ）を作成。
+2. 「承認済みリダイレクト URI」に Supabase のコールバック
+   `https://<PROJECT>.supabase.co/auth/v1/callback` を登録。
+3. 取得した Client ID / Secret を Supabase の Authentication → Providers → Google に設定。
+4. Authentication → URL Configuration の「Site URL」「Redirect URLs」に
+   `http://localhost:3000`（と本番 URL）を登録。アプリ側のコールバックは `/api/auth/callback`。
 
 ### 3. MapTiler アカウント
 
@@ -87,10 +70,13 @@ cp env.example .env.local
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 NEXT_PUBLIC_MAPTILER_KEY=xxxx
+# Google ログインを許可する管理者メール（, または空白区切り）。未設定だと誰もログインできない。
+ADMIN_EMAILS=you@example.com
 ```
 
 > `NEXT_PUBLIC_` 変数はブラウザに露出します。anon key と MapTiler key は公開前提のキーです。
-> サービスロールキーなど秘匿すべきキーは絶対に `NEXT_PUBLIC_` を付けないこと。
+> `ADMIN_EMAILS` は **サーバー専用**（`NEXT_PUBLIC_` を付けない）。サービスロールキー等の秘匿キーも同様。
+> `ADMIN_EMAILS` は fail-closed: 未設定だと Google ログインしても全員弾かれます（必ず設定）。
 
 ### 5. 起動
 
@@ -98,12 +84,14 @@ NEXT_PUBLIC_MAPTILER_KEY=xxxx
 npm run dev   # http://localhost:3000
 ```
 
-- `/` … マップ（メイン）
-- `/upload` … 写真アップロード
+- `/login` … Google ログイン（管理者のみ）
+- `/trips` … 旅程一覧（`/` はここへリダイレクト）
+- `/trips/new` … 旅程の新規作成
+- `/trips/[id]` … 旅程の地図表示 + 写真追加
 
 ### 6. Vercel デプロイ
 
-リポジトリを Vercel にインポートし、上記 3 つの環境変数を設定すれば 1 コマンドでデプロイ可能。
+リポジトリを Vercel にインポートし、上記 4 つの環境変数（`ADMIN_EMAILS` 含む）を設定すれば 1 コマンドでデプロイ可能。Google OAuth のリダイレクト URL に本番ドメインを追加すること。
 
 ---
 

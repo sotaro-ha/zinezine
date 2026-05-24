@@ -1,4 +1,8 @@
-import { createBrowserClient, createServerClient } from '@supabase/ssr';
+import { createBrowserClient } from '@supabase/ssr';
+
+// このファイルはクライアント/サーバー双方から import される。
+// next/headers のようなサーバー専用 API は絶対に import しない（クライアントバンドルが壊れる）。
+// サーバー専用クライアントは @/lib/supabase-server を参照すること。
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -10,29 +14,11 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   );
 }
 
-/**
- * ブラウザ用クライアント（'use client' から使う）。
- * MVP は anon key で直接 Storage/DB にアクセスする（RLS で anon を許可）。
- */
+/** ブラウザ用クライアント（'use client' から使う）。セッションは cookie に保持される。 */
 export function getBrowserSupabase() {
   return createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
-/**
- * サーバーコンポーネント/Route Handler 用クライアント。
- * MVP は認証なしのためクッキー連携は最小限（no-op）。
- * 将来 Supabase Auth を入れる際は cookies() を渡して getAll/setAll を実装する。
- */
-export function getServerSupabase() {
-  return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    cookies: {
-      getAll: () => [],
-      setAll: () => {},
-    },
-  });
-}
-
-/** Storage 上のパスから公開 URL を組み立てる */
-export function publicPhotoUrl(storagePath: string): string {
-  return `${SUPABASE_URL}/storage/v1/object/public/photos/${storagePath}`;
-}
+// 写真本体の URL は「署名付き URL」を使う（バケットは非公開。Storage RLS で
+// 自分 or 共有された旅程のみ発行できる）。発行はサーバー側で行う想定のため
+// @/lib/supabase-server の signedPhotoUrls / signedPhotoUrlMap を使うこと。
