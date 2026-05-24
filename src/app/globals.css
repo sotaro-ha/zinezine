@@ -152,3 +152,131 @@
   border-radius: 12px !important;
   box-shadow: var(--shadow-card) !important;
 }
+
+/* ============================================================
+   写真サムネのマーカー（地図上）
+   ============================================================ */
+.photo-marker {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  background: transparent;
+  /* 下端を指す“しずく”形 */
+  filter: drop-shadow(0 6px 12px rgba(10, 74, 78, 0.35));
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.photo-marker img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 9999px 9999px 9999px 2px; /* 左下だけ尖らせてピンらしく */
+  border: 3px solid #fff;
+  background: hsl(var(--secondary));
+  box-shadow: inset 0 0 0 1.5px hsl(var(--accent) / 0.5);
+}
+.photo-marker:hover {
+  transform: scale(1.12) translateY(-2px);
+  z-index: 2;
+}
+.photo-marker.is-hidden {
+  display: none;
+}
+.photo-marker.is-dropping {
+  animation: marker-drop 0.55s cubic-bezier(0.22, 1.4, 0.4, 1) both;
+}
+@keyframes marker-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-26px) scale(0.6);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(2px) scale(1.06);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .photo-marker.is-dropping {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   シークバー（撮影時刻スクラブ）
+   ============================================================ */
+.timeline-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--accent) / 0.18);
+  outline: none;
+}
+.timeline-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: hsl(var(--accent));
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(10, 74, 78, 0.4);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.timeline-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+.timeline-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: hsl(var(--accent));
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(10, 74, 78, 0.4);
+  cursor: pointer;
+}
+
+/* ============================================================
+   アップロードのマイクロインタラクション
+   ============================================================ */
+.badge-pop {
+  display: inline-block;
+  animation: badge-pop 0.4s cubic-bezier(0.22, 1.6, 0.4, 1) both;
+}
+@keyframes badge-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.toast-in {
+  animation: toast-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .badge-pop,
+  .toast-in {
+    animation: none;
+  }
+}

@@ -22,6 +22,7 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
   const [items, setItems] = useState<Item[]>([]);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const update = (idx: number, patch: Partial<Item>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
@@ -96,10 +97,24 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
       }));
       setItems(list);
       setBusy(true);
+      setToast(null);
       await runPool(list, user.id);
       setBusy(false);
 
-      // サーバーコンポーネントを再取得して地図に反映
+      // 完了フィードバック（GPS 付きは地図に出る旨を伝える）
+      setItems((prev) => {
+        const ok = prev.filter((i) => i.status === 'done');
+        const gps = ok.filter((i) => i.hasGps).length;
+        setToast(
+          gps > 0
+            ? `${ok.length} 枚を追加（うち ${gps} 枚が地図に出ます）`
+            : `${ok.length} 枚を追加しました`,
+        );
+        return prev;
+      });
+      window.setTimeout(() => setToast(null), 4000);
+
+      // サーバーコンポーネントを再取得して地図に反映（新しいピンが落ちてくる）
       router.refresh();
     },
     [runPool, router, supabase],
@@ -116,6 +131,14 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
 
   return (
     <section className="space-y-6">
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+          <div className="toast-in flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground shadow-[var(--shadow-float)]">
+            <span>✦</span>
+            {toast}
+          </div>
+        </div>
+      )}
       <button
         type="button"
         onClick={() => !busy && inputRef.current?.click()}
@@ -160,7 +183,9 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
                 <span className="shrink-0">
                   {it.status === 'uploading' && <span className="text-muted-foreground">…</span>}
                   {it.status === 'done' && (
-                    <span className="text-accent">{it.hasGps ? '✓ 表示' : '✓ GPSなし'}</span>
+                    <span className="badge-pop text-accent">
+                      {it.hasGps ? '✓ 地図に表示' : '✓ GPSなし'}
+                    </span>
                   )}
                   {it.status === 'error' && (
                     <span className="text-destructive" title={it.message}>

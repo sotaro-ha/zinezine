@@ -1,6 +1,6 @@
-import PhotoMap from '@/components/Map';
 import PhotoUploader from '@/components/PhotoUploader';
 import ShareManager from '@/components/ShareManager';
+import TripExperience from '@/components/TripExperience';
 import { requireAdmin } from '@/lib/auth';
 import { getServerSupabase, signedPhotoUrlMap } from '@/lib/supabase-server';
 import type { Photo, PhotoWithUrl } from '@/types/photo';
@@ -66,20 +66,9 @@ export default async function TripDetailPage({
         </div>
       </header>
 
-      <section
-        className="reveal h-[58vh] overflow-hidden rounded-2xl border border-border"
-        style={{ animationDelay: '80ms', boxShadow: 'var(--shadow-float)' }}
-      >
-        {photos.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 bg-secondary/60 text-muted-foreground">
-            <span className="text-2xl text-accent/40">✦</span>
-            <p className="text-sm">写真を追加するとここに地図が表示されます</p>
-          </div>
-        ) : (
-          // 写真集合が変わったら地図を作り直す（アップロード後の router.refresh() で反映）
-          <PhotoMap key={photos.map((p) => p.id).join(',')} photos={photos} />
-        )}
-      </section>
+      <div className="reveal" style={{ animationDelay: '80ms' }}>
+        <TripExperience title={t.title} description={t.description} photos={photos} />
+      </div>
 
       {isOwner ? (
         <>
