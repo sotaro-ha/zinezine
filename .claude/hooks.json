@@ -1,0 +1,50 @@
+{
+    "_comment": "ZineZine のスターターフック。各フックは既知の失敗モードに対応。最初はこの3種だけ、摩擦が見えたら追加する。",
+    "hooks": {
+        "PostToolUse": [
+            {
+                "_comment": "Edit/Write のたびに Biome で自動整形し、スタイルのドリフトを蓄積させない。",
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "npx --no-install biome check --write --no-errors-on-unmatched . 2>/dev/null || true"
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "_comment": "セッション終了時に検証コマンドを実行。",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "npm run check --if-present"
+                    }
+                ]
+            }
+        ],
+        "PreToolUse": [
+            {
+                "_comment": "git の --no-verify をブロック。pre-commit フックの迂回を防ぐ。",
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/block-no-verify.sh"
+                    }
+                ]
+            },
+            {
+                "_comment": "設定ファイルと .env 系の編集をブロック。ルールの骨抜きと秘密情報の混入を防ぐ。",
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/protect-configs.sh"
+                    }
+                ]
+            }
+        ]
+    }
+}

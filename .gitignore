@@ -1,0 +1,23 @@
+node_modules/
+.next/
+.vercel/
+out/
+build/
+
+# build artifacts
+next-env.d.ts
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# secrets — never commit
+.env
+.env.local
+.env.*.local
+*serviceAccount*.json
+
+# local agent settings (machine-specific)
+.claude/settings.local.json
+
+# os / editor
+.DS_Store
+*.log
