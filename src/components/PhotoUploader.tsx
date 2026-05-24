@@ -233,7 +233,7 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-foreground shadow-[var(--shadow-card)] backdrop-blur transition hover:shadow-[var(--shadow-float)]"
+        className="flex h-10 items-center gap-1.5 rounded-full bg-accent px-4 text-sm font-medium text-accent-foreground shadow-[var(--shadow-card)] transition hover:shadow-[var(--shadow-float)]"
       >
         ＋ 追加
       </button>

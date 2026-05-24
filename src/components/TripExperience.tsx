@@ -66,30 +66,27 @@ export default function TripExperience({
         <ZinePreview title={title} description={description} photos={photos} />
       )}
 
-      {/* フローティング・トップバー */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-3 p-3 sm:p-5">
-        <div className="pointer-events-auto max-w-[60%] rounded-2xl border border-border bg-card/85 px-4 py-3 shadow-[var(--shadow-card)] backdrop-blur">
-          <Link
-            href="/trips"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground transition hover:text-accent"
-          >
-            <span aria-hidden>←</span> 旅程一覧
-          </Link>
-          <h1 className="truncate font-serif text-xl leading-tight sm:text-2xl">{title}</h1>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            全 {total} 枚 ・ 地図 {withGps} 枚
-          </p>
-        </div>
+      {/* フローティング・トップバー（高さを揃えて軽く） */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between gap-3 p-3 sm:p-4">
+        <Link
+          href="/trips"
+          title={`${title}（全 ${total} 枚・地図 ${withGps} 枚）`}
+          className="floating pointer-events-auto flex h-10 max-w-[48%] items-center gap-2 px-4 text-sm transition hover:text-accent"
+        >
+          <span aria-hidden className="text-muted-foreground">
+            ←
+          </span>
+          <span className="truncate font-serif text-base sm:text-lg">{title}</span>
+        </Link>
 
         <div className="pointer-events-auto flex items-center gap-2">
-          {isOwner && <PhotoUploader tripId={tripId} />}
-          <div className="flex rounded-full border border-border bg-card/85 p-0.5 text-sm shadow-[var(--shadow-card)] backdrop-blur">
+          <div className="floating flex h-10 items-center p-1 text-sm">
             {(['map', 'timeline', 'zine'] as const).map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setView(v)}
-                className={`rounded-full px-3.5 py-1.5 transition ${
+                className={`rounded-full px-3 py-1.5 transition ${
                   view === v
                     ? 'bg-accent text-accent-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
@@ -99,6 +96,7 @@ export default function TripExperience({
               </button>
             ))}
           </div>
+          {isOwner && <PhotoUploader tripId={tripId} />}
         </div>
       </div>
     </div>
