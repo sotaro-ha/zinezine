@@ -38,7 +38,6 @@ export default async function TripDetailPage({
       <section className="reveal h-[100svh] w-full">
         <TripExperience
           title={t.title}
-          description={t.description}
           photos={photos}
           total={photos.length}
           withGps={withGps}

@@ -5,7 +5,7 @@ import PhotoUploader from '@/components/PhotoUploader';
 import ShareManager from '@/components/ShareManager';
 import Timeline from '@/components/Timeline';
 import TimelineView from '@/components/TimelineView';
-import ZinePreview from '@/components/ZinePreview';
+import ZineStory from '@/components/ZineStory';
 import type { PhotoWithUrl } from '@/types/photo';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -25,7 +25,6 @@ const VIEW_LABELS: Record<View, string> = {
  */
 export default function TripExperience({
   title,
-  description,
   photos,
   total,
   withGps,
@@ -33,7 +32,6 @@ export default function TripExperience({
   isOwner = false,
 }: {
   title: string;
-  description: string | null;
   photos: PhotoWithUrl[];
   total: number;
   withGps: number;
@@ -64,7 +62,7 @@ export default function TripExperience({
       ) : view === 'timeline' ? (
         <TimelineView tripId={tripId} photos={photos} isOwner={isOwner} />
       ) : (
-        <ZinePreview title={title} description={description} photos={photos} />
+        <ZineStory tripId={tripId} title={title} photos={photos} />
       )}
 
       {/* フローティング・トップバー（高さを揃えて軽く） */}

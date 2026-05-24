@@ -113,67 +113,8 @@ export default function TimelineView({
   return (
     <div className="h-full overflow-y-auto px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-2xl space-y-6">
-        {/* ツールバー */}
-        <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card/85 px-3 py-2 backdrop-blur">
-          {/* 大きさスライダー */}
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span aria-hidden>▦</span>
-            <input
-              type="range"
-              min={1}
-              max={3}
-              step={1}
-              value={4 - cols}
-              onChange={(e) => setCols(4 - Number(e.target.value))}
-              className="timeline-range w-24"
-              aria-label="写真の大きさ"
-            />
-            <span aria-hidden className="text-base">
-              ⬚
-            </span>
-          </label>
-
-          {/* 選択 / 削除（所有者のみ） */}
-          {isOwner &&
-            (selecting ? (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={toggleAll}
-                  className="rounded-full px-3 py-1.5 text-sm text-muted-foreground transition hover:text-foreground"
-                >
-                  {allSelected ? '全解除' : '全選択'}
-                </button>
-                <span className="text-sm text-muted-foreground">{selected.size} 枚</span>
-                <button
-                  type="button"
-                  disabled={selected.size === 0 || busy}
-                  onClick={() => removeMany(selectedPhotos)}
-                  className="rounded-full bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground transition disabled:opacity-50"
-                >
-                  {busy ? '削除中…' : '削除'}
-                </button>
-                <button
-                  type="button"
-                  onClick={exitSelect}
-                  className="rounded-full border border-border px-3 py-1.5 text-sm"
-                >
-                  やめる
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setSelecting(true)}
-                className="rounded-full border border-border px-4 py-1.5 text-sm transition hover:border-accent/40 hover:text-accent"
-              >
-                選択
-              </button>
-            ))}
-        </div>
-
         {error && (
-          <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-2 text-sm text-destructive">
+          <p className="border border-destructive/20 bg-destructive/5 px-4 py-2 text-sm text-destructive">
             {error}
           </p>
         )}
@@ -203,7 +144,7 @@ export default function TimelineView({
                     <figure
                       key={p.id}
                       onClick={selecting ? () => toggle(p.id) : undefined}
-                      className={`reveal relative overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-card)] transition ${
+                      className={`reveal relative overflow-hidden border bg-card shadow-[var(--shadow-card)] transition ${
                         selecting ? 'cursor-pointer' : ''
                       } ${isSel ? 'border-accent ring-2 ring-accent/40' : 'border-border'}`}
                       style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
@@ -266,6 +207,65 @@ export default function TimelineView({
             </section>
           );
         })}
+
+        {/* ツールバー（下部に固定） */}
+        <div className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 border border-border bg-card/85 px-3 py-2 backdrop-blur">
+          {/* 大きさスライダー */}
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span aria-hidden>▦</span>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={1}
+              value={4 - cols}
+              onChange={(e) => setCols(4 - Number(e.target.value))}
+              className="timeline-range w-24"
+              aria-label="写真の大きさ"
+            />
+            <span aria-hidden className="text-base">
+              ⬚
+            </span>
+          </label>
+
+          {/* 選択 / 削除（所有者のみ） */}
+          {isOwner &&
+            (selecting ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="rounded-full px-3 py-1.5 text-sm text-muted-foreground transition hover:text-foreground"
+                >
+                  {allSelected ? '全解除' : '全選択'}
+                </button>
+                <span className="text-sm text-muted-foreground">{selected.size} 枚</span>
+                <button
+                  type="button"
+                  disabled={selected.size === 0 || busy}
+                  onClick={() => removeMany(selectedPhotos)}
+                  className="rounded-full bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground transition disabled:opacity-50"
+                >
+                  {busy ? '削除中…' : '削除'}
+                </button>
+                <button
+                  type="button"
+                  onClick={exitSelect}
+                  className="rounded-full border border-border px-3 py-1.5 text-sm"
+                >
+                  やめる
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSelecting(true)}
+                className="rounded-full border border-border px-4 py-1.5 text-sm transition hover:border-accent/40 hover:text-accent"
+              >
+                選択
+              </button>
+            ))}
+        </div>
       </div>
     </div>
   );
