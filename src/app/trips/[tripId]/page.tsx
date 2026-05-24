@@ -1,4 +1,3 @@
-import ShareManager from '@/components/ShareManager';
 import TripExperience from '@/components/TripExperience';
 import { requireAdmin } from '@/lib/auth';
 import { attachPhotoUrls, getServerSupabase } from '@/lib/supabase-server';
@@ -47,26 +46,6 @@ export default async function TripDetailPage({
           isOwner={isOwner}
         />
       </section>
-
-      {/* 編集パネル（スクロールで下に） */}
-      <div className="mx-auto max-w-3xl space-y-8 px-6 py-12">
-        {isOwner ? (
-          <>
-            <section className="surface space-y-3 p-6">
-              <h2 className="font-serif text-2xl">共有</h2>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                メールアドレスを指定すると、その人がログインしたときにこの旅程を閲覧できます（編集は所有者のみ）。
-              </p>
-              <ShareManager tripId={tripId} />
-            </section>
-          </>
-        ) : (
-          <section className="surface flex items-center gap-3 p-6 text-sm text-muted-foreground">
-            <span className="text-accent">✦</span>
-            この旅程はあなたに共有されています（閲覧のみ）。
-          </section>
-        )}
-      </div>
     </main>
   );
 }

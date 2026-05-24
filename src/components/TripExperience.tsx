@@ -2,6 +2,7 @@
 
 import PhotoMap from '@/components/Map';
 import PhotoUploader from '@/components/PhotoUploader';
+import ShareManager from '@/components/ShareManager';
 import Timeline from '@/components/Timeline';
 import TimelineView from '@/components/TimelineView';
 import ZinePreview from '@/components/ZinePreview';
@@ -96,6 +97,7 @@ export default function TripExperience({
               </button>
             ))}
           </div>
+          {isOwner && <ShareManager tripId={tripId} />}
           {isOwner && <PhotoUploader tripId={tripId} />}
         </div>
       </div>
