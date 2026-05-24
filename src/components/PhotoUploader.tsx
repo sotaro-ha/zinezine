@@ -31,12 +31,29 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
     async (item: Item, idx: number, userId: string) => {
       update(idx, { status: 'uploading' });
       try {
+        // メタ（GPS・撮影時刻）は必ず「元ファイル」から抽出して DB に別管理する。
+        // 表示用画像はこの後 JPEG に変換するため、変換後のファイルには依存しない。
         const meta = await extractMeta(item.file);
 
+        // ブラウザ（Safari 以外）は HEIC を表示できないため、HEIC は JPEG に変換して保存する。
+        let body: Blob = item.file;
+        let filename = item.file.name;
+        let contentType = item.file.type || 'application/octet-stream';
+        try {
+          const { isHeic, heicTo } = await import('heic-to/next');
+          if (await isHeic(item.file)) {
+            body = await heicTo({ blob: item.file, type: 'image/jpeg', quality: 0.85 });
+            filename = `${item.file.name.replace(/\.(heic|heif)$/i, '')}.jpg`;
+            contentType = 'image/jpeg';
+          }
+        } catch {
+          // 変換に失敗しても元ファイルをそのまま保存する（Safari では表示できる）
+        }
+
         // 所有者・旅程ごとに整理し、衝突を避けるため uuid を前置
-        const path = `${userId}/${tripId}/${crypto.randomUUID()}-${safeName(item.file.name)}`;
-        const { error: upErr } = await supabase.storage.from('photos').upload(path, item.file, {
-          contentType: item.file.type || 'application/octet-stream',
+        const path = `${userId}/${tripId}/${crypto.randomUUID()}-${safeName(filename)}`;
+        const { error: upErr } = await supabase.storage.from('photos').upload(path, body, {
+          contentType,
           upsert: false,
         });
         if (upErr) throw upErr;
