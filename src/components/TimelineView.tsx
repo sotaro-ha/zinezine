@@ -102,9 +102,10 @@ export default function TimelineView({
                     <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-2.5 shadow-[var(--shadow-card)]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={p.url}
+                        src={p.thumb_url}
                         alt=""
                         loading="lazy"
+                        decoding="async"
                         className="h-16 w-16 shrink-0 rounded-xl object-cover"
                       />
                       <div className="min-w-0 flex-1">

@@ -16,6 +16,29 @@ function safeName(name: string): string {
   return name.replace(/[^\w.\-]+/g, '_');
 }
 
+/** 表示画像から縮小サムネ(JPEG)を作る。一覧/地図用に軽くする。失敗時は null。 */
+async function makeThumb(blob: Blob, maxEdge = 1024, quality = 0.72): Promise<Blob | null> {
+  try {
+    const bmp = await createImageBitmap(blob);
+    const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bmp.close?.();
+      return null;
+    }
+    ctx.drawImage(bmp, 0, 0, w, h);
+    bmp.close?.();
+    return await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/jpeg', quality));
+  } catch {
+    return null;
+  }
+}
+
 /** ミリ秒を「約 N 秒 / 約 N 分」に */
 function fmtEta(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -86,17 +109,30 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
           // 変換に失敗しても元ファイルをそのまま保存する（Safari では表示できる）
         }
 
-        const path = `${userId}/${tripId}/${crypto.randomUUID()}-${safeName(filename)}`;
+        const id = crypto.randomUUID();
+        const path = `${userId}/${tripId}/${id}-${safeName(filename)}`;
         const { error: upErr } = await supabase.storage.from('photos').upload(path, body, {
           contentType,
           upsert: false,
         });
         if (upErr) throw upErr;
 
+        // 一覧/地図用の縮小サムネ（失敗しても原寸で代替するので致命ではない）
+        let thumbPath: string | null = null;
+        const thumb = await makeThumb(body);
+        if (thumb) {
+          const tp = `${userId}/${tripId}/${id}-thumb.jpg`;
+          const { error: tErr } = await supabase.storage
+            .from('photos')
+            .upload(tp, thumb, { contentType: 'image/jpeg', upsert: false });
+          if (!tErr) thumbPath = tp;
+        }
+
         const { error: dbErr } = await supabase.from('photos').insert({
           user_id: userId,
           trip_id: tripId,
           storage_path: path,
+          thumb_path: thumbPath,
           lat: meta.lat,
           lng: meta.lng,
           taken_at: meta.takenAt ? meta.takenAt.toISOString() : null,

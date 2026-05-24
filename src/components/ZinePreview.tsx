@@ -80,9 +80,10 @@ export default function ZinePreview({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={p.url}
+                  src={p.thumb_url}
                   alt={caption(p)}
                   loading="lazy"
+                  decoding="async"
                   className="block max-h-[70vh] w-full object-cover"
                 />
                 <figcaption className="flex items-center gap-2 px-5 py-3 text-sm text-muted-foreground">

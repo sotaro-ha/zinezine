@@ -1,8 +1,8 @@
 import ShareManager from '@/components/ShareManager';
 import TripExperience from '@/components/TripExperience';
 import { requireAdmin } from '@/lib/auth';
-import { getServerSupabase, signedPhotoUrlMap } from '@/lib/supabase-server';
-import type { Photo, PhotoWithUrl } from '@/types/photo';
+import { attachPhotoUrls, getServerSupabase } from '@/lib/supabase-server';
+import type { Photo } from '@/types/photo';
 import type { Trip } from '@/types/trip';
 import { notFound } from 'next/navigation';
 
@@ -30,15 +30,7 @@ export default async function TripDetailPage({
     .eq('trip_id', tripId)
     .order('taken_at', { ascending: true, nullsFirst: false });
 
-  const photoRows = (rows as Photo[]) ?? [];
-  const signed = await signedPhotoUrlMap(
-    supabase,
-    photoRows.map((p) => p.storage_path),
-  );
-  const photos: PhotoWithUrl[] = photoRows.map((p) => ({
-    ...p,
-    url: signed.get(p.storage_path) ?? '',
-  }));
+  const photos = await attachPhotoUrls(supabase, (rows as Photo[]) ?? []);
   const withGps = photos.filter((p) => p.lat != null && p.lng != null).length;
 
   return (

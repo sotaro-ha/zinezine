@@ -11,53 +11,39 @@ const TOKYO: [number, number] = [139.767, 35.681]; // 写真ゼロ時の初期�
 
 type GeoPhoto = PhotoWithUrl & { lat: number; lng: number };
 
-/** taken_at をミリ秒に。無い写真は null。 */
 function takenMs(p: PhotoWithUrl): number | null {
   return p.taken_at ? Date.parse(p.taken_at) : null;
 }
 
-/**
- * cutoff（ミリ秒）が指定されたとき、その時刻までに撮った写真だけ見せる（旅の再生）。
- * 撮影時刻が無い写真は常に表示する。
- */
+/** cutoff（ミリ秒）までに撮った写真だけ表示。撮影時刻が無い写真は常に表示。 */
 function isVisible(p: PhotoWithUrl, cutoff: number | null): boolean {
   if (cutoff == null) return true;
   const t = takenMs(p);
   return t == null || t <= cutoff;
 }
 
-/** 写真サムネのマーカー DOM を作る。 */
-function makeMarkerEl(photo: GeoPhoto): HTMLButtonElement {
-  const el = document.createElement('button');
-  el.type = 'button';
-  el.className = 'photo-marker';
-  el.setAttribute('aria-label', '写真を表示');
-  const img = document.createElement('img');
-  img.src = photo.url;
-  img.alt = '';
-  img.loading = 'lazy';
-  el.appendChild(img);
-  return el;
-}
-
+/**
+ * 写真の地図。多数の写真でも軽いよう GeoJSON + クラスタリングで描画する
+ * （DOM マーカーは使わない）。ピンをクリックするとサムネのポップアップが出る。
+ */
 export default function PhotoMap({
   photos,
   cutoff = null,
 }: {
   photos: PhotoWithUrl[];
-  /** この時刻（ミリ秒）までに撮った写真だけ表示。null は全部表示。 */
   cutoff?: number | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<
-    { photo: GeoPhoto; marker: maplibregl.Marker; el: HTMLButtonElement }[]
-  >([]);
   const loadedRef = useRef(false);
+  const byId = useRef(new globalThis.Map<string, GeoPhoto>());
 
-  // 初期化（photos が変わったら作り直す。親が key で再マウントもする）
+  // 初期化（photos が変わったら親が key で再マウントする）
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+
+    const geo = photos.filter((p): p is GeoPhoto => p.lat != null && p.lng != null);
+    byId.current = new globalThis.Map(geo.map((p) => [p.id, p]));
 
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -70,10 +56,9 @@ export default function PhotoMap({
 
     map.on('load', () => {
       loadedRef.current = true;
-      const geo = photos.filter((p): p is GeoPhoto => p.lat != null && p.lng != null);
       if (geo.length === 0) return;
 
-      // 旅程ライン（撮影日時順。photos は taken_at 昇順で渡される）
+      // 旅程ライン
       map.addSource('route', {
         type: 'geojson',
         data: {
@@ -90,20 +75,85 @@ export default function PhotoMap({
         paint: { 'line-color': '#0a4a4e', 'line-width': 3, 'line-opacity': 0.4 },
       });
 
-      // 写真サムネのマーカー
-      for (const photo of geo) {
-        const el = makeMarkerEl(photo);
-        el.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          new maplibregl.Popup({ closeButton: true, maxWidth: '240px', offset: 18 })
-            .setLngLat([photo.lng, photo.lat])
-            .setHTML(buildPopupHTML(photo))
-            .addTo(map);
-        });
-        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([photo.lng, photo.lat])
+      // 写真ポイント（クラスタリング有効）
+      map.addSource('photos', {
+        type: 'geojson',
+        cluster: true,
+        clusterRadius: 48,
+        clusterMaxZoom: 15,
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      // クラスタ（束ねた円。枚数で大きさを変える）
+      map.addLayer({
+        id: 'clusters',
+        type: 'circle',
+        source: 'photos',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': '#0a4a4e',
+          'circle-opacity': 0.9,
+          'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 50, 30],
+          'circle-stroke-width': 3,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+      map.addLayer({
+        id: 'cluster-count',
+        type: 'symbol',
+        source: 'photos',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 13,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
+      // 個別ピン（白丸 + teal リング）
+      map.addLayer({
+        id: 'unclustered',
+        type: 'circle',
+        source: 'photos',
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': '#ffffff',
+          'circle-radius': 7,
+          'circle-stroke-width': 3,
+          'circle-stroke-color': '#0a4a4e',
+        },
+      });
+
+      // クラスタをクリック → 展開ズーム
+      map.on('click', 'clusters', async (e) => {
+        const f = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0];
+        if (!f) return;
+        const clusterId = f.properties?.cluster_id;
+        const src = map.getSource('photos') as maplibregl.GeoJSONSource;
+        const zoom = await src.getClusterExpansionZoom(clusterId);
+        map.easeTo({ center: (f.geometry as GeoJSON.Point).coordinates as [number, number], zoom });
+      });
+
+      // 個別ピンをクリック → ポップアップ
+      map.on('click', 'unclustered', (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const photo = byId.current.get(f.properties?.id as string);
+        if (!photo) return;
+        new maplibregl.Popup({ closeButton: true, maxWidth: '240px', offset: 14 })
+          .setLngLat((f.geometry as GeoJSON.Point).coordinates as [number, number])
+          .setHTML(buildPopupHTML(photo))
           .addTo(map);
-        markersRef.current.push({ photo, marker, el });
+      });
+
+      for (const layer of ['clusters', 'unclustered']) {
+        map.on('mouseenter', layer, () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', layer, () => {
+          map.getCanvas().style.cursor = '';
+        });
       }
 
       // 全ピンが収まるように
@@ -118,15 +168,13 @@ export default function PhotoMap({
 
     return () => {
       loadedRef.current = false;
-      markersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
-    // photos の同一集合内での再描画は別 effect（cutoff）で扱う
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photos]);
 
-  // cutoff に応じてマーカー表示とラインを更新
+  // cutoff に応じてポイントとラインを更新
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (loadedRef.current) applyCutoff(cutoff);
@@ -135,30 +183,28 @@ export default function PhotoMap({
   function applyCutoff(cut: number | null) {
     const map = mapRef.current;
     if (!map) return;
+    const geo = [...byId.current.values()];
 
-    for (const { photo, el } of markersRef.current) {
-      const visible = isVisible(photo, cut);
-      // 既に表示中なら drop アニメを再発火させない
-      if (visible && el.dataset.shown !== '1') {
-        el.dataset.shown = '1';
-        el.classList.remove('is-hidden');
-        el.classList.add('is-dropping');
-        el.addEventListener('animationend', () => el.classList.remove('is-dropping'), {
-          once: true,
-        });
-      } else if (!visible && el.dataset.shown !== '0') {
-        el.dataset.shown = '0';
-        el.classList.add('is-hidden');
-      }
+    const photoSrc = map.getSource('photos') as maplibregl.GeoJSONSource | undefined;
+    if (photoSrc) {
+      photoSrc.setData({
+        type: 'FeatureCollection',
+        features: geo
+          .filter((p) => isVisible(p, cut))
+          .map((p) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+            properties: { id: p.id },
+          })),
+      });
     }
 
-    // ライン: 表示中かつ撮影時刻あり（＝順序が確定）のみ
-    const src = map.getSource('route') as maplibregl.GeoJSONSource | undefined;
-    if (src) {
-      const coords = markersRef.current
-        .filter(({ photo }) => takenMs(photo) != null && isVisible(photo, cut))
-        .map(({ photo }) => [photo.lng, photo.lat]);
-      src.setData({
+    const routeSrc = map.getSource('route') as maplibregl.GeoJSONSource | undefined;
+    if (routeSrc) {
+      const coords = geo
+        .filter((p) => takenMs(p) != null && isVisible(p, cut))
+        .map((p) => [p.lng, p.lat]);
+      routeSrc.setData({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: coords },
         properties: {},

@@ -1,6 +1,6 @@
 import { getAdminUserOrNull } from '@/lib/auth';
-import { getServerSupabase, signedPhotoUrlMap } from '@/lib/supabase-server';
-import type { Photo, PhotoWithUrl } from '@/types/photo';
+import { attachPhotoUrls, getServerSupabase } from '@/lib/supabase-server';
+import type { Photo } from '@/types/photo';
 import type { Trip } from '@/types/trip';
 import { NextResponse } from 'next/server';
 
@@ -33,15 +33,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tri
     return NextResponse.json({ error: photoErr.message }, { status: 500 });
   }
 
-  const rows = (photoRows as Photo[]) ?? [];
-  const signed = await signedPhotoUrlMap(
-    supabase,
-    rows.map((p) => p.storage_path),
-  );
-  const photos: PhotoWithUrl[] = rows.map((p) => ({
-    ...p,
-    url: signed.get(p.storage_path) ?? '',
-  }));
+  const photos = await attachPhotoUrls(supabase, (photoRows as Photo[]) ?? []);
 
   return NextResponse.json({ trip: trip as Trip, photos });
 }

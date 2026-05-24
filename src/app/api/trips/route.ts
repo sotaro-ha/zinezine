@@ -5,7 +5,13 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-type TripRow = Trip & { photos: { storage_path: string }[] };
+type TripRow = Trip & { photos: { storage_path: string; thumb_path: string | null }[] };
+
+/** 代表写真のパス。軽いサムネを優先し、無ければ原寸へフォールバック。 */
+function coverPath(t: TripRow): string | null {
+  const first = t.photos[0];
+  return first?.thumb_path ?? t.cover_photo_path ?? first?.storage_path ?? null;
+}
 
 /** GET /api/trips — 自分の旅程一覧（新しい順、写真枚数と代表写真付き） */
 export async function GET() {
@@ -17,7 +23,7 @@ export async function GET() {
   const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from('trips')
-    .select('*, photos(storage_path)')
+    .select('*, photos(storage_path, thumb_path)')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -25,13 +31,11 @@ export async function GET() {
   }
 
   const rows = (data as TripRow[]) ?? [];
-  const coverPaths = rows
-    .map((t) => t.cover_photo_path ?? t.photos[0]?.storage_path ?? null)
-    .filter((p): p is string => p != null);
+  const coverPaths = rows.map(coverPath).filter((p): p is string => p != null);
   const signed = await signedPhotoUrlMap(supabase, coverPaths);
 
   const trips: TripWithMeta[] = rows.map((t) => {
-    const cover = t.cover_photo_path ?? t.photos[0]?.storage_path ?? null;
+    const cover = coverPath(t);
     return {
       id: t.id,
       user_id: t.user_id,

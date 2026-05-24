@@ -5,7 +5,13 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-type TripRow = Trip & { photos: { storage_path: string }[] };
+type TripRow = Trip & { photos: { storage_path: string; thumb_path: string | null }[] };
+
+/** 代表写真のパス。軽いサムネを優先し、無ければ原寸へフォールバック。 */
+function coverPath(t: TripRow): string | null {
+  const first = t.photos[0];
+  return first?.thumb_path ?? t.cover_photo_path ?? first?.storage_path ?? null;
+}
 
 export default async function TripsPage() {
   const user = await requireAdmin();
@@ -13,17 +19,15 @@ export default async function TripsPage() {
 
   const { data, error } = await supabase
     .from('trips')
-    .select('*, photos(storage_path)')
+    .select('*, photos(storage_path, thumb_path)')
     .order('created_at', { ascending: false });
 
   const rows = (data as TripRow[]) ?? [];
-  const coverPaths = rows
-    .map((t) => t.cover_photo_path ?? t.photos[0]?.storage_path ?? null)
-    .filter((p): p is string => p != null);
+  const coverPaths = rows.map(coverPath).filter((p): p is string => p != null);
   const signed = await signedPhotoUrlMap(supabase, coverPaths);
 
   const trips: TripWithMeta[] = rows.map((t) => {
-    const cover = t.cover_photo_path ?? t.photos[0]?.storage_path ?? null;
+    const cover = coverPath(t);
     return {
       id: t.id,
       user_id: t.user_id,

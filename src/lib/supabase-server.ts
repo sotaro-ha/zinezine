@@ -1,3 +1,4 @@
+import type { Photo, PhotoWithUrl } from '@/types/photo';
 import { createServerClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
@@ -29,6 +30,25 @@ export async function signedPhotoUrlMap(
     }
   }
   return map;
+}
+
+/**
+ * Photo 行に表示用 URL（原寸 + サムネ）を付与する。
+ * サムネが無い行は原寸を thumb_url にフォールバックする。
+ */
+export async function attachPhotoUrls(
+  supabase: SupabaseClient,
+  rows: Photo[],
+): Promise<PhotoWithUrl[]> {
+  const paths = rows.flatMap((p) =>
+    p.thumb_path ? [p.storage_path, p.thumb_path] : [p.storage_path],
+  );
+  const signed = await signedPhotoUrlMap(supabase, paths);
+  return rows.map((p) => {
+    const url = signed.get(p.storage_path) ?? '';
+    const thumb_url = (p.thumb_path ? signed.get(p.thumb_path) : undefined) ?? url;
+    return { ...p, url, thumb_url };
+  });
 }
 
 /**

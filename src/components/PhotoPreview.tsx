@@ -27,7 +27,7 @@ export function buildPopupHTML(photo: PhotoWithUrl): string {
 
   return `
     <figure style="margin:0;width:220px;background:#fff;">
-      <img src="${esc(photo.url)}" alt="${esc(when)}"
+      <img src="${esc(photo.thumb_url || photo.url)}" alt="${esc(when)}"
            style="display:block;width:100%;height:150px;object-fit:cover;" loading="lazy" />
       <figcaption style="padding:9px 13px;font-size:12px;letter-spacing:0.02em;color:#0a4a4e;display:flex;align-items:center;gap:6px;">
         <span style="display:inline-block;width:5px;height:5px;border-radius:9999px;background:#0a4a4e;"></span>
