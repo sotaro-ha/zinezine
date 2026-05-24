@@ -20,8 +20,13 @@ function dayKey(p: PhotoWithUrl): string {
   });
 }
 
+/** Storage 上で消すべきパス（原寸 + サムネ） */
+function storagePaths(p: PhotoWithUrl): string[] {
+  return p.thumb_path ? [p.storage_path, p.thumb_path] : [p.storage_path];
+}
+
 /**
- * 撮影時刻順のタイムライン。所有者はここで写真を削除できる。
+ * 撮影時刻順のタイムライン。所有者はここで写真を削除できる（単体 / 複数選択）。
  */
 export default function TimelineView({
   tripId: _tripId,
@@ -34,26 +39,44 @@ export default function TimelineView({
 }) {
   const router = useRouter();
   const supabase = getBrowserSupabase();
-  const [deleting, setDeleting] = useState<Set<string>>(new Set());
-  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const remove = async (photo: PhotoWithUrl) => {
-    setConfirmId(null);
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  const allSelected = photos.length > 0 && selected.size === photos.length;
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(photos.map((p) => p.id)));
+
+  const exitSelect = () => {
+    setSelecting(false);
+    setSelected(new Set());
+  };
+
+  const removeMany = async (targets: PhotoWithUrl[]) => {
+    if (targets.length === 0 || busy) return;
+    if (!window.confirm(`${targets.length} 枚を削除しますか？（地図・zine からも消えます）`))
+      return;
+    setBusy(true);
     setError(null);
-    setDeleting((s) => new Set(s).add(photo.id));
     try {
-      const { error: dbErr } = await supabase.from('photos').delete().eq('id', photo.id);
+      const ids = targets.map((p) => p.id);
+      const { error: dbErr } = await supabase.from('photos').delete().in('id', ids);
       if (dbErr) throw dbErr;
-      await supabase.storage.from('photos').remove([photo.storage_path]);
+      await supabase.storage.from('photos').remove(targets.flatMap(storagePaths));
+      exitSelect();
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : '削除に失敗しました');
-      setDeleting((s) => {
-        const n = new Set(s);
-        n.delete(photo.id);
-        return n;
-      });
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -66,7 +89,6 @@ export default function TimelineView({
     );
   }
 
-  // 撮影日でグルーピング（photos は taken_at 昇順で渡される）
   const groups: { day: string; items: PhotoWithUrl[] }[] = [];
   for (const p of photos) {
     const key = dayKey(p);
@@ -75,9 +97,57 @@ export default function TimelineView({
     else groups.push({ day: key, items: [p] });
   }
 
+  const selectedPhotos = photos.filter((p) => selected.has(p.id));
+
   return (
     <div className="h-full overflow-y-auto px-4 py-8 sm:px-8">
-      <div className="mx-auto max-w-xl space-y-8">
+      <div className="mx-auto max-w-xl space-y-6">
+        {/* ツールバー（所有者のみ） */}
+        {isOwner && (
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-2xl border border-border bg-card/85 px-3 py-2 backdrop-blur">
+            {selecting ? (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="rounded-full px-3 py-1.5 text-sm text-muted-foreground transition hover:text-foreground"
+                >
+                  {allSelected ? '全解除' : '全選択'}
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">{selected.size} 枚選択</span>
+                  <button
+                    type="button"
+                    disabled={selected.size === 0 || busy}
+                    onClick={() => removeMany(selectedPhotos)}
+                    className="rounded-full bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground transition disabled:opacity-50"
+                  >
+                    {busy ? '削除中…' : '削除'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={exitSelect}
+                    className="rounded-full border border-border px-3 py-1.5 text-sm"
+                  >
+                    やめる
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-muted-foreground">{photos.length} 枚</span>
+                <button
+                  type="button"
+                  onClick={() => setSelecting(true)}
+                  className="rounded-full border border-border px-4 py-1.5 text-sm transition hover:border-accent/40 hover:text-accent"
+                >
+                  選択
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {error && (
           <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-2 text-sm text-destructive">
             {error}
@@ -89,17 +159,33 @@ export default function TimelineView({
             <h3 className="font-serif text-lg text-accent">{g.day}</h3>
             <ul className="relative space-y-3 border-l border-border pl-5">
               {g.items.map((p, i) => {
-                const isDeleting = deleting.has(p.id);
                 const noGps = p.lat == null || p.lng == null;
+                const isSel = selected.has(p.id);
                 return (
                   <li
                     key={p.id}
-                    className={`reveal relative ${isDeleting ? 'pointer-events-none opacity-40' : ''}`}
+                    className="reveal relative"
                     style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
                   >
-                    {/* タイムラインのドット */}
                     <span className="absolute -left-[23px] top-5 h-2.5 w-2.5 rounded-full border-2 border-background bg-accent" />
-                    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-2.5 shadow-[var(--shadow-card)]">
+                    {/* biome-ignore lint/a11y/useKeyWithClickEvents: 行内に操作ボタンを別途用意している */}
+                    <div
+                      onClick={selecting ? () => toggle(p.id) : undefined}
+                      className={`flex items-center gap-3 rounded-2xl border bg-card p-2.5 shadow-[var(--shadow-card)] transition ${
+                        selecting ? 'cursor-pointer' : ''
+                      } ${isSel ? 'border-accent ring-2 ring-accent/30' : 'border-border'}`}
+                    >
+                      {selecting && (
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] ${
+                            isSel
+                              ? 'border-accent bg-accent text-accent-foreground'
+                              : 'border-border text-transparent'
+                          }`}
+                        >
+                          ✓
+                        </span>
+                      )}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={p.thumb_url}
@@ -123,34 +209,16 @@ export default function TimelineView({
                         </p>
                       </div>
 
-                      {isOwner &&
-                        (confirmId === p.id ? (
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => remove(p)}
-                              className="rounded-full bg-destructive px-3 py-1 text-xs font-medium text-destructive-foreground"
-                            >
-                              削除
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmId(null)}
-                              className="rounded-full border border-border px-3 py-1 text-xs"
-                            >
-                              取消
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmId(p.id)}
-                            aria-label="この写真を削除"
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
-                          >
-                            ×
-                          </button>
-                        ))}
+                      {isOwner && !selecting && (
+                        <button
+                          type="button"
+                          onClick={() => removeMany([p])}
+                          aria-label="この写真を削除"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                   </li>
                 );
