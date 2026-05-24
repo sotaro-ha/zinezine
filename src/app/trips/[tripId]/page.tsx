@@ -1,4 +1,3 @@
-import PhotoUploader from '@/components/PhotoUploader';
 import ShareManager from '@/components/ShareManager';
 import TripExperience from '@/components/TripExperience';
 import { requireAdmin } from '@/lib/auth';
@@ -61,16 +60,6 @@ export default async function TripDetailPage({
       <div className="mx-auto max-w-3xl space-y-8 px-6 py-12">
         {isOwner ? (
           <>
-            <section id="uploader" className="surface scroll-mt-6 space-y-3 p-6">
-              <h2 className="font-serif text-2xl">写真を追加</h2>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                位置情報（GPS）付きの写真をこの旅程に追加します。jpeg / heic 対応（HEIC
-                は表示用に自動で JPEG へ変換。GPS・撮影時刻は元データから保持）。GPS
-                が無い写真はピンには出ません。
-              </p>
-              <PhotoUploader tripId={tripId} />
-            </section>
-
             <section className="surface space-y-3 p-6">
               <h2 className="font-serif text-2xl">共有</h2>
               <p className="text-sm leading-relaxed text-muted-foreground">

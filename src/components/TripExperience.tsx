@@ -1,6 +1,7 @@
 'use client';
 
 import PhotoMap from '@/components/Map';
+import PhotoUploader from '@/components/PhotoUploader';
 import Timeline from '@/components/Timeline';
 import TimelineView from '@/components/TimelineView';
 import ZinePreview from '@/components/ZinePreview';
@@ -81,14 +82,7 @@ export default function TripExperience({
         </div>
 
         <div className="pointer-events-auto flex items-center gap-2">
-          {isOwner && (
-            <a
-              href="#uploader"
-              className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-foreground shadow-[var(--shadow-card)] backdrop-blur transition hover:shadow-[var(--shadow-float)]"
-            >
-              ＋ 追加
-            </a>
-          )}
+          {isOwner && <PhotoUploader tripId={tripId} />}
           <div className="flex rounded-full border border-border bg-card/85 p-0.5 text-sm shadow-[var(--shadow-card)] backdrop-blur">
             {(['map', 'timeline', 'zine'] as const).map((v) => (
               <button
