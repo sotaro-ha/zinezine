@@ -186,14 +186,20 @@ export default function TimelineView({
                           ✓
                         </span>
                       )}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={p.thumb_url}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="h-16 w-16 shrink-0 rounded-xl object-cover"
-                      />
+                      {p.thumb_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.thumb_url}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-16 w-16 shrink-0 rounded-xl object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-secondary text-accent/40">
+                          ✦
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="font-medium tabular-nums">{timeLabel(p)}</p>
                         <p className="truncate text-xs text-muted-foreground">

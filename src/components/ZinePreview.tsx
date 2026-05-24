@@ -78,14 +78,20 @@ export default function ZinePreview({
                 className="reveal overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-card)]"
                 style={{ animationDelay: `${Math.min(i, 6) * 50}ms` }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={p.thumb_url}
-                  alt={caption(p)}
-                  loading="lazy"
-                  decoding="async"
-                  className="block max-h-[70vh] w-full object-cover"
-                />
+                {p.thumb_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.thumb_url}
+                    alt={caption(p)}
+                    loading="lazy"
+                    decoding="async"
+                    className="block max-h-[70vh] w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-48 w-full items-center justify-center bg-secondary text-2xl text-accent/40">
+                    ✦
+                  </div>
+                )}
                 <figcaption className="flex items-center gap-2 px-5 py-3 text-sm text-muted-foreground">
                   <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                   {caption(p)}
