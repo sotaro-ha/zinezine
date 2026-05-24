@@ -351,9 +351,7 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
                               <span className="text-muted-foreground">…</span>
                             )}
                             {it.status === 'done' && (
-                              <span className="badge-pop text-accent">
-                                {it.hasGps ? '✓ 地図' : '✓'}
-                              </span>
+                              <span className="badge-pop text-accent">✓ 完了</span>
                             )}
                             {it.status === 'error' && (
                               <span className="text-destructive" title={it.message}>

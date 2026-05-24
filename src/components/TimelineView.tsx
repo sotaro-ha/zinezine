@@ -16,8 +16,17 @@ function dayKey(p: PhotoWithUrl): string {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    weekday: 'short',
   });
+}
+
+/** 左レール用のコンパクトな日付（5/23 と 金） */
+function dateParts(p: PhotoWithUrl): { md: string; wd: string } {
+  if (!p.taken_at) return { md: '日付', wd: 'なし' };
+  const d = new Date(p.taken_at);
+  return {
+    md: d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }),
+    wd: d.toLocaleDateString('ja-JP', { weekday: 'short' }),
+  };
 }
 
 /** Storage 上で消すべきパス（原寸 + サムネ） */
@@ -26,7 +35,8 @@ function storagePaths(p: PhotoWithUrl): string[] {
 }
 
 /**
- * 撮影時刻順のタイムライン。所有者はここで写真を削除できる（単体 / 複数選択）。
+ * 撮影時刻順のタイムライン。左に日付、右に大きな写真を縦に並べる。
+ * 所有者はここで写真を削除できる（単体 / 複数選択）。
  */
 export default function TimelineView({
   tripId: _tripId,
@@ -100,11 +110,11 @@ export default function TimelineView({
   const selectedPhotos = photos.filter((p) => selected.has(p.id));
 
   return (
-    <div className="h-full overflow-y-auto px-4 py-8 sm:px-8">
-      <div className="mx-auto max-w-xl space-y-6">
+    <div className="h-full overflow-y-auto px-4 py-6 sm:px-8">
+      <div className="mx-auto max-w-2xl space-y-6">
         {/* ツールバー（所有者のみ） */}
         {isOwner && (
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-2xl border border-border bg-card/85 px-3 py-2 backdrop-blur">
+          <div className="sticky top-0 z-20 flex items-center justify-between gap-2 rounded-2xl border border-border bg-card/85 px-3 py-2 backdrop-blur">
             {selecting ? (
               <>
                 <button
@@ -154,84 +164,85 @@ export default function TimelineView({
           </p>
         )}
 
-        {groups.map((g) => (
-          <section key={g.day} className="space-y-3">
-            <h3 className="font-serif text-lg text-accent">{g.day}</h3>
-            <ul className="relative space-y-3 border-l border-border pl-5">
-              {g.items.map((p, i) => {
-                const noGps = p.lat == null || p.lng == null;
-                const isSel = selected.has(p.id);
-                return (
-                  <li
-                    key={p.id}
-                    className="reveal relative"
-                    style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
-                  >
-                    <span className="absolute -left-[23px] top-5 h-2.5 w-2.5 rounded-full border-2 border-background bg-accent" />
-                    {/* biome-ignore lint/a11y/useKeyWithClickEvents: 行内に操作ボタンを別途用意している */}
-                    <div
+        {groups.map((g) => {
+          const { md, wd } = dateParts(g.items[0]);
+          return (
+            <section key={g.day} className="flex gap-3 sm:gap-5">
+              {/* 左レール: 日付 */}
+              <div className="w-12 shrink-0 sm:w-16">
+                <div className="sticky top-16 text-right leading-tight">
+                  <div className="font-serif text-xl text-accent sm:text-2xl">{md}</div>
+                  <div className="text-xs text-muted-foreground">{wd}</div>
+                </div>
+              </div>
+
+              {/* 右: 大きな写真 */}
+              <div className="min-w-0 flex-1 space-y-5">
+                {g.items.map((p, i) => {
+                  const noGps = p.lat == null || p.lng == null;
+                  const isSel = selected.has(p.id);
+                  return (
+                    // biome-ignore lint/a11y/useKeyWithClickEvents: 選択モード以外では別ボタンで操作する
+                    <figure
+                      key={p.id}
                       onClick={selecting ? () => toggle(p.id) : undefined}
-                      className={`flex items-center gap-3 rounded-2xl border bg-card p-2.5 shadow-[var(--shadow-card)] transition ${
+                      className={`reveal relative overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-card)] transition ${
                         selecting ? 'cursor-pointer' : ''
-                      } ${isSel ? 'border-accent ring-2 ring-accent/30' : 'border-border'}`}
+                      } ${isSel ? 'border-accent ring-2 ring-accent/40' : 'border-border'}`}
+                      style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
                     >
-                      {selecting && (
-                        <span
-                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] ${
-                            isSel
-                              ? 'border-accent bg-accent text-accent-foreground'
-                              : 'border-border text-transparent'
-                          }`}
-                        >
-                          ✓
-                        </span>
-                      )}
                       {p.thumb_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={p.thumb_url}
-                          alt=""
+                          alt={timeLabel(p)}
                           loading="lazy"
                           decoding="async"
-                          className="h-16 w-16 shrink-0 rounded-xl object-cover"
+                          className="block max-h-[78vh] w-full object-cover"
                         />
                       ) : (
-                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-secondary text-accent/40">
+                        <div className="flex aspect-[4/3] w-full items-center justify-center bg-secondary text-2xl text-accent/40">
                           ✦
                         </div>
                       )}
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium tabular-nums">{timeLabel(p)}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {noGps ? (
-                            <span className="text-muted-foreground/70">
-                              GPSなし（地図に出ません）
-                            </span>
-                          ) : (
-                            <span className="tabular-nums">
-                              {p.lat?.toFixed(4)}, {p.lng?.toFixed(4)}
-                            </span>
-                          )}
-                        </p>
-                      </div>
 
-                      {isOwner && !selecting && (
-                        <button
-                          type="button"
-                          onClick={() => removeMany([p])}
-                          aria-label="この写真を削除"
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
+                      {/* 左下: 時刻 + 位置の有無 */}
+                      <figcaption className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/55 to-transparent px-4 pb-3 pt-8 text-sm text-white">
+                        <span className="font-medium tabular-nums">{timeLabel(p)}</span>
+                        <span className="text-xs text-white/85">
+                          {noGps ? '· 位置情報なし' : '· 📍 地図に表示'}
+                        </span>
+                      </figcaption>
+
+                      {/* 右上: 選択 / 削除 */}
+                      {isOwner &&
+                        (selecting ? (
+                          <span
+                            className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full border text-xs ${
+                              isSel
+                                ? 'border-accent bg-accent text-accent-foreground'
+                                : 'border-white/70 bg-black/30 text-transparent'
+                            }`}
+                          >
+                            ✓
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => removeMany([p])}
+                            aria-label="この写真を削除"
+                            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition hover:bg-destructive"
+                          >
+                            ×
+                          </button>
+                        ))}
+                    </figure>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </div>
   );
