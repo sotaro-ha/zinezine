@@ -14,7 +14,13 @@ export async function GET(request: Request) {
     const supabase = await getServerSupabase();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+      // ローカル開発時は origin（http://localhost:3000）をそのまま使う。
+      // 本番ではプロキシ配下で request.url のホスト/プロトコルが内部値になり得るため、
+      // プロキシが渡す x-forwarded-host を優先して公開 URL へ戻す。
+      const forwardedHost = request.headers.get('x-forwarded-host');
+      const isLocalEnv = process.env.NODE_ENV === 'development';
+      const base = isLocalEnv || !forwardedHost ? origin : `https://${forwardedHost}`;
+      return NextResponse.redirect(`${base}${next}`);
     }
   }
 
