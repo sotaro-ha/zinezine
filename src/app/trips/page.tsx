@@ -1,4 +1,5 @@
-import { requireAdmin } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { MAX_TRIPS_PER_USER } from '@/lib/limits';
 import { getServerSupabase, signedPhotoUrlMap } from '@/lib/supabase-server';
 import type { Trip, TripWithMeta } from '@/types/trip';
 import Link from 'next/link';
@@ -14,7 +15,7 @@ function coverPath(t: TripRow): string | null {
 }
 
 export default async function TripsPage() {
-  const user = await requireAdmin();
+  const user = await requireUser();
   const supabase = await getServerSupabase();
 
   const { data, error } = await supabase
@@ -23,6 +24,9 @@ export default async function TripsPage() {
     .order('created_at', { ascending: false });
 
   const rows = (data as TripRow[]) ?? [];
+  // 上限は「自分が所有する旅程」だけ数える（共有された旅程は対象外）。
+  const ownedCount = rows.filter((t) => t.user_id === user.id).length;
+  const atTripLimit = ownedCount >= MAX_TRIPS_PER_USER;
   const coverPaths = rows.map(coverPath).filter((p): p is string => p != null);
   const signed = await signedPhotoUrlMap(supabase, coverPaths);
 
@@ -53,9 +57,19 @@ export default async function TripsPage() {
           <p className="text-sm text-muted-foreground">{user.email}</p>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/trips/new" className="btn-accent">
-            ＋ 新しい旅程
-          </Link>
+          {atTripLimit ? (
+            <span
+              className="btn-accent pointer-events-none opacity-40"
+              title={`旅程は ${MAX_TRIPS_PER_USER} つまでです`}
+              aria-disabled
+            >
+              ＋ 新しい旅程
+            </span>
+          ) : (
+            <Link href="/trips/new" className="btn-accent">
+              ＋ 新しい旅程
+            </Link>
+          )}
           <form action="/api/auth/signout" method="post">
             <button type="submit" className="btn-ghost">
               ログアウト
@@ -67,6 +81,13 @@ export default async function TripsPage() {
       {error && (
         <p className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-2.5 text-sm text-destructive">
           旅程の取得に失敗しました。Supabase の設定（テーブル / RLS）を確認してください。
+        </p>
+      )}
+
+      {atTripLimit && (
+        <p className="mb-6 rounded-xl border border-accent/20 bg-accent/5 px-4 py-2.5 text-sm text-muted-foreground">
+          作成できる旅程は {MAX_TRIPS_PER_USER}{' '}
+          つまでです。新しく作るには、いずれかの旅程を削除してください。
         </p>
       )}
 

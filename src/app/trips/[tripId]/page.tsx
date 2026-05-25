@@ -1,5 +1,5 @@
 import TripExperience from '@/components/TripExperience';
-import { requireAdmin } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { attachPhotoUrls, getServerSupabase } from '@/lib/supabase-server';
 import type { Photo } from '@/types/photo';
 import type { Trip } from '@/types/trip';
@@ -12,7 +12,7 @@ export default async function TripDetailPage({
 }: {
   params: Promise<{ tripId: string }>;
 }) {
-  const user = await requireAdmin();
+  const user = await requireUser();
   const { tripId } = await params;
   const supabase = await getServerSupabase();
 
@@ -43,6 +43,7 @@ export default async function TripDetailPage({
           withGps={withGps}
           tripId={tripId}
           isOwner={isOwner}
+          currentUserId={user.id}
         />
       </section>
     </main>

@@ -1,4 +1,4 @@
-import { getAdminUserOrNull } from '@/lib/auth';
+import { getUserOrNull } from '@/lib/auth';
 import { attachPhotoUrls, getServerSupabase } from '@/lib/supabase-server';
 import type { Photo } from '@/types/photo';
 import { NextResponse } from 'next/server';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 /** GET /api/photos?tripId=... — 写真メタデータを撮影日時順で返す（自分の写真のみ、RLS で担保） */
 export async function GET(request: Request) {
-  const user = await getAdminUserOrNull();
+  const user = await getUserOrNull();
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }

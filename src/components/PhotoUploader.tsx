@@ -1,13 +1,14 @@
 'use client';
 
 import { extractMeta } from '@/lib/exif';
+import { MAX_PHOTOS_PER_TRIP } from '@/lib/limits';
 import { getBrowserSupabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Status = 'pending' | 'uploading' | 'done' | 'error';
 type Item = { file: File; status: Status; message?: string; hasGps?: boolean };
-type Result = { added: number; gps: number; failed: number; aborted: boolean };
+type Result = { added: number; gps: number; failed: number; aborted: boolean; notice?: string };
 
 const CONCURRENCY = 3; // req.md: 同時アップロードは 3 に制限
 
@@ -139,7 +140,12 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
           width: meta.width,
           height: meta.height,
         });
-        if (dbErr) throw dbErr;
+        if (dbErr) {
+          // 行の挿入に失敗（上限超過など）したら、上げた Storage ファイルを残さない
+          const orphans = thumbPath ? [path, thumbPath] : [path];
+          await supabase.storage.from('photos').remove(orphans);
+          throw dbErr;
+        }
 
         update(idx, { status: 'done', hasGps: meta.lat != null && meta.lng != null });
       } catch (e) {
@@ -175,7 +181,34 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
         return;
       }
 
-      const list: Item[] = Array.from(fileList).map((file) => ({ file, status: 'pending' }));
+      // 1 旅程の写真上限に対する残り枚数を確認する（DB トリガーでも強制）。
+      const { count } = await supabase
+        .from('photos')
+        .select('id', { count: 'exact', head: true })
+        .eq('trip_id', tripId);
+      const remaining = MAX_PHOTOS_PER_TRIP - (count ?? 0);
+
+      const all = Array.from(fileList);
+      if (remaining <= 0) {
+        setItems([]);
+        setResult({
+          added: 0,
+          gps: 0,
+          failed: 0,
+          aborted: false,
+          notice: `この旅程は写真が上限（${MAX_PHOTOS_PER_TRIP} 枚）に達しています。`,
+        });
+        return;
+      }
+      // 上限を超える分はアップロードせず、超過の旨だけ伝える。
+      const allowed = all.slice(0, remaining);
+      const overflow = all.length - allowed.length;
+      const notice =
+        overflow > 0
+          ? `上限（${MAX_PHOTOS_PER_TRIP} 枚）を超えるため、${overflow} 枚は追加されませんでした。`
+          : undefined;
+
+      const list: Item[] = allowed.map((file) => ({ file, status: 'pending' }));
       abortRef.current = false;
       setItems(list);
       setResult(null);
@@ -194,6 +227,7 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
             gps: ok.filter((i) => i.hasGps).length,
             failed,
             aborted: abortRef.current,
+            notice,
           });
           return prev;
         });
@@ -266,15 +300,26 @@ export default function PhotoUploader({ tripId }: { tripId: string }) {
                   {result.aborted ? '!' : '✓'}
                 </div>
                 <p className="font-serif text-xl">
-                  {result.aborted ? '中断しました' : 'アップロード完了'}
+                  {result.aborted
+                    ? '中断しました'
+                    : result.added === 0
+                      ? '追加できませんでした'
+                      : 'アップロード完了'}
                 </p>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {result.added} 枚を追加しました。
-                  {result.gps > 0
-                    ? ` うち ${result.gps} 枚が地図に表示されます。`
-                    : ' GPS 付きの写真がなかったため地図には出ません。'}
-                  {result.failed > 0 ? ` （${result.failed} 枚は失敗）` : ''}
-                </p>
+                {result.added > 0 && (
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {result.added} 枚を追加しました。
+                    {result.gps > 0
+                      ? ` うち ${result.gps} 枚が地図に表示されます。`
+                      : ' GPS 付きの写真がなかったため地図には出ません。'}
+                    {result.failed > 0 ? ` （${result.failed} 枚は失敗）` : ''}
+                  </p>
+                )}
+                {result.notice && (
+                  <p className="rounded-xl border border-accent/20 bg-accent/5 px-4 py-2.5 text-sm text-muted-foreground">
+                    {result.notice}
+                  </p>
+                )}
                 <div className="flex gap-2">
                   <button
                     type="button"

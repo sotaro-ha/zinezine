@@ -1,7 +1,7 @@
--- 旅写真マップ — Supabase スキーマ（Google 認証 + 管理者限定 + 旅程共有）
+-- 旅写真マップ — Supabase スキーマ（Google 認証 + 旅程共有）
 -- Supabase の SQL Editor で実行する（新規構築用。既存 DB は docs/migrations/ を使う）。
--- 認証は Supabase Auth(Google)。アプリ層で ADMIN_EMAILS 許可リストに絞る。
--- RLS は auth.uid() ベース。閲覧は「所有者 OR 共有先（trip_shares）」、書き込みは所有者のみ。
+-- 認証は Supabase Auth(Google)。ログイン済みなら誰でも自分の旅程を作れる。
+-- RLS は auth.uid() ベース。閲覧/投稿は「所有者 OR 共有先（trip_shares）」、共有先は自分名義で写真を追加できる。
 -- Storage バケット `photos` は非公開。表示は署名付き URL で行う。
 
 -- ============================================================
@@ -70,8 +70,8 @@ grant execute on function public.user_owns_trip(uuid) to authenticated;
 grant execute on function public.user_can_view_trip(uuid) to authenticated;
 
 -- ============================================================
--- RLS: 閲覧は「所有者 OR 共有先」、書き込みは所有者のみ
--- （管理者限定はアプリ層の ADMIN_EMAILS で担保。ここは所有者/共有スコープ）
+-- RLS: 閲覧は「所有者 OR 共有先」。旅程の作成/共有設定は所有者のみ、
+-- 写真の投稿は共有先も可（自分名義）。ここは所有者/共有スコープのみを担保する。
 -- ============================================================
 alter table trips enable row level security;
 create policy "trips_select_visible" on trips for select to authenticated using (public.user_can_view_trip(id));
@@ -81,8 +81,10 @@ create policy "trips_delete_own" on trips for delete to authenticated using (aut
 
 alter table photos enable row level security;
 create policy "photos_select_visible" on photos for select to authenticated using (public.user_can_view_trip(trip_id));
-create policy "photos_insert_own" on photos for insert to authenticated with check (auth.uid() = user_id and public.user_owns_trip(trip_id));
-create policy "photos_delete_own" on photos for delete to authenticated using (auth.uid() = user_id);
+-- 投稿は所有者 OR 共有先（自分名義で）。閲覧可能な旅程に自分の user_id で insert できる。
+create policy "photos_insert_contributor" on photos for insert to authenticated with check (auth.uid() = user_id and public.user_can_view_trip(trip_id));
+-- 削除は自分が上げた写真、または旅程の所有者。
+create policy "photos_delete_own_or_trip_owner" on photos for delete to authenticated using (auth.uid() = user_id or public.user_owns_trip(trip_id));
 
 alter table trip_shares enable row level security;
 create policy "trip_shares_select" on trip_shares for select to authenticated
@@ -109,8 +111,41 @@ create policy "photos_storage_insert" on storage.objects
   );
 create policy "photos_storage_delete" on storage.objects
   for delete to authenticated using (
-    bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text
+    bucket_id = 'photos' and (
+      (storage.foldername(name))[1] = auth.uid()::text
+      or public.user_owns_trip(((storage.foldername(name))[2])::uuid)
+    )
   );
+
+-- ============================================================
+-- 利用上限（DB 側で強制。値は src/lib/limits.ts と合わせる）
+--  - 旅程: 1 ユーザー 5 つまで / 写真: 1 旅程 1000 枚まで
+-- ============================================================
+create or replace function public.enforce_trip_limit()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from trips where user_id = new.user_id) >= 5 then
+    raise exception '旅程は 1 ユーザーにつき 5 つまでです' using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trips_limit on trips;
+create trigger trips_limit before insert on trips
+  for each row execute function public.enforce_trip_limit();
+
+create or replace function public.enforce_photo_limit()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from photos where trip_id = new.trip_id) >= 1000 then
+    raise exception '1 つの旅程に追加できる写真は 1000 枚までです' using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists photos_limit on photos;
+create trigger photos_limit before insert on photos
+  for each row execute function public.enforce_photo_limit();
 
 -- 将来拡張:
 --  - AI 解析/zine: taken_at と (lat,lng) のクラスタリング（PostGIS ST_ClusterDBSCAN）

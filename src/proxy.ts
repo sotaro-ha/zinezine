@@ -1,4 +1,3 @@
-import { isAdminEmail } from '@/lib/admin';
 import { createServerClient } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
 
@@ -42,16 +41,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // 認証済みだが管理者許可リスト外 → サインアウトして /login?error=not_admin
-  if (user && !isAdminEmail(user.email)) {
-    await supabase.auth.signOut();
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('error', 'not_admin');
-    return NextResponse.redirect(url);
-  }
-
-  // 認証済み管理者が /login にいる → /trips へ
+  // ログイン済みが /login にいる → /trips へ
   if (user && isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = '/trips';

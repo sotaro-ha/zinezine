@@ -36,16 +36,18 @@ function storagePaths(p: PhotoWithUrl): string[] {
 
 /**
  * 撮影時刻順のタイムライン。左に日付、右に大きな写真を縦に並べる。
- * 所有者はここで写真を削除できる（単体 / 複数選択）。
+ * 自分が上げた写真は削除できる（所有者は任意の写真を削除可。単体 / 複数選択）。
  */
 export default function TimelineView({
   tripId: _tripId,
   photos,
   isOwner,
+  currentUserId = null,
 }: {
   tripId: string;
   photos: PhotoWithUrl[];
   isOwner: boolean;
+  currentUserId?: string | null;
 }) {
   const router = useRouter();
   const supabase = getBrowserSupabase();
@@ -55,6 +57,11 @@ export default function TimelineView({
   const [error, setError] = useState<string | null>(null);
   const [cols, setCols] = useState(1); // 写真の大きさ（1=大きい … 3=小さい）
 
+  // 削除できるのは「自分が上げた写真」OR「旅程の所有者（任意の写真）」。
+  const canDelete = (p: PhotoWithUrl) =>
+    isOwner || (currentUserId != null && p.user_id === currentUserId);
+  const deletable = photos.filter(canDelete);
+
   const toggle = (id: string) =>
     setSelected((s) => {
       const n = new Set(s);
@@ -63,8 +70,9 @@ export default function TimelineView({
       return n;
     });
 
-  const allSelected = photos.length > 0 && selected.size === photos.length;
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(photos.map((p) => p.id)));
+  const allSelected = deletable.length > 0 && selected.size === deletable.length;
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(deletable.map((p) => p.id)));
 
   const exitSelect = () => {
     setSelecting(false);
@@ -178,8 +186,8 @@ export default function TimelineView({
                         </span>
                       </figcaption>
 
-                      {/* 右上: 選択 / 削除 */}
-                      {isOwner &&
+                      {/* 右上: 選択 / 削除（自分の写真 or 所有者） */}
+                      {canDelete(p) &&
                         (selecting ? (
                           <span
                             className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full border text-xs ${
@@ -228,8 +236,8 @@ export default function TimelineView({
             </span>
           </label>
 
-          {/* 選択 / 削除（所有者のみ） */}
-          {isOwner &&
+          {/* 選択 / 削除（削除できる写真がある場合のみ） */}
+          {deletable.length > 0 &&
             (selecting ? (
               <div className="flex items-center gap-2">
                 <button

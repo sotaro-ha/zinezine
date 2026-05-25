@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 
 /**
  * Google OAuth のコールバック。認可コードをセッションに交換し cookie を張る。
- * 管理者判定は middleware が担う（非管理者はこの後 /login?error=not_admin へ弾かれる）。
+ * ログイン済みなら誰でも利用可（自分の旅程のみ RLS で分離される）。
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);

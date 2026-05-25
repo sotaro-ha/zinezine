@@ -1,4 +1,4 @@
-import { getAdminUserOrNull } from '@/lib/auth';
+import { getUserOrNull } from '@/lib/auth';
 import { attachPhotoUrls, getServerSupabase } from '@/lib/supabase-server';
 import type { Photo } from '@/types/photo';
 import type { Trip } from '@/types/trip';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 /** GET /api/trips/:tripId — 旅程と、撮影日時順の写真 */
 export async function GET(_request: Request, { params }: { params: Promise<{ tripId: string }> }) {
-  const user = await getAdminUserOrNull();
+  const user = await getUserOrNull();
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -43,7 +43,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ tripId: string }> },
 ) {
-  const user = await getAdminUserOrNull();
+  const user = await getUserOrNull();
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }

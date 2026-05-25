@@ -6,12 +6,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const message =
-    error === 'not_admin'
-      ? 'このアカウントには利用権限がありません（現在は管理者のみ）。'
-      : error === 'auth'
-        ? 'ログインに失敗しました。もう一度お試しください。'
-        : null;
+  const message = error === 'auth' ? 'ログインに失敗しました。もう一度お試しください。' : null;
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-6">
@@ -47,9 +42,7 @@ export default async function LoginPage({
 
         <GoogleSignInButton />
 
-        <p className="text-xs text-muted-foreground/80">
-          現在は招待された管理者アカウントのみ利用できます。
-        </p>
+        <p className="text-xs text-muted-foreground/80">Google アカウントでログインできます。</p>
       </div>
     </main>
   );

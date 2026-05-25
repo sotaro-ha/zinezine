@@ -30,6 +30,7 @@ export default function TripExperience({
   withGps,
   tripId,
   isOwner = false,
+  currentUserId = null,
 }: {
   title: string;
   photos: PhotoWithUrl[];
@@ -37,6 +38,7 @@ export default function TripExperience({
   withGps: number;
   tripId: string;
   isOwner?: boolean;
+  currentUserId?: string | null;
 }) {
   const [view, setView] = useState<View>('map');
   const [cutoff, setCutoff] = useState<number | null>(null);
@@ -60,7 +62,12 @@ export default function TripExperience({
           </div>
         </>
       ) : view === 'timeline' ? (
-        <TimelineView tripId={tripId} photos={photos} isOwner={isOwner} />
+        <TimelineView
+          tripId={tripId}
+          photos={photos}
+          isOwner={isOwner}
+          currentUserId={currentUserId}
+        />
       ) : (
         <ZineStory tripId={tripId} title={title} photos={photos} />
       )}
@@ -95,8 +102,9 @@ export default function TripExperience({
               </button>
             ))}
           </div>
+          {/* 共有設定は所有者のみ。写真の追加は共有された人もできる。 */}
           {isOwner && <ShareManager tripId={tripId} />}
-          {isOwner && <PhotoUploader tripId={tripId} />}
+          <PhotoUploader tripId={tripId} />
         </div>
       </div>
     </div>

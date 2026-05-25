@@ -1,4 +1,5 @@
-import { getAdminUserOrNull } from '@/lib/auth';
+import { getUserOrNull } from '@/lib/auth';
+import { MAX_TRIPS_PER_USER } from '@/lib/limits';
 import { getServerSupabase, signedPhotoUrlMap } from '@/lib/supabase-server';
 import type { Trip, TripWithMeta } from '@/types/trip';
 import { NextResponse } from 'next/server';
@@ -15,7 +16,7 @@ function coverPath(t: TripRow): string | null {
 
 /** GET /api/trips — 自分の旅程一覧（新しい順、写真枚数と代表写真付き） */
 export async function GET() {
-  const user = await getAdminUserOrNull();
+  const user = await getUserOrNull();
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -54,7 +55,7 @@ export async function GET() {
 
 /** POST /api/trips — 旅程を新規作成 */
 export async function POST(request: Request) {
-  const user = await getAdminUserOrNull();
+  const user = await getUserOrNull();
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -77,6 +78,22 @@ export async function POST(request: Request) {
   const desc = typeof description === 'string' && description.trim() ? description.trim() : null;
 
   const supabase = await getServerSupabase();
+
+  // 上限チェック（自分が所有する旅程のみ数える）。DB トリガーでも強制するが、ここで分かりやすく弾く。
+  const { count, error: countErr } = await supabase
+    .from('trips')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id);
+  if (countErr) {
+    return NextResponse.json({ error: countErr.message }, { status: 500 });
+  }
+  if ((count ?? 0) >= MAX_TRIPS_PER_USER) {
+    return NextResponse.json(
+      { error: `旅程は 1 ユーザーにつき ${MAX_TRIPS_PER_USER} つまでです` },
+      { status: 409 },
+    );
+  }
+
   const { data, error } = await supabase
     .from('trips')
     .insert({ user_id: user.id, title: trimmedTitle, description: desc })
