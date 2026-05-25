@@ -1,10 +1,10 @@
 'use client';
 
+import MiniMap from '@/components/MiniMap';
 import { getBrowserSupabase } from '@/lib/supabase';
 import type { PhotoWithUrl } from '@/types/photo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
 const STICKERS = [
   '✨',
   '❤️',
@@ -69,17 +69,6 @@ function dateRange(photos: PhotoWithUrl[]): string {
   const max = new Date(Math.max(...times.map((d) => +d)));
   const f = (d: Date) => d.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
   return min.toDateString() === max.toDateString() ? f(min) : `${f(min)} – ${f(max)}`;
-}
-
-function staticMapUrl(geo: GeoPhoto[]): string | null {
-  if (!MAPTILER_KEY || geo.length === 0) return null;
-  const step = Math.max(1, Math.ceil(geo.length / 40));
-  const pts = geo.filter((_, i) => i % step === 0);
-  const coords = pts.map((p) => `${p.lng},${p.lat}`).join('|');
-  const base = `https://api.maptiler.com/maps/streets-v2/static/auto/600x848@2x.png?key=${MAPTILER_KEY}&padding=90`;
-  return pts.length < 2
-    ? `${base}&markers=${coords}`
-    : `${base}&path=stroke:0x0a4a4eff|width:5|${coords}`;
 }
 
 /** 枚数とレイアウト指定からグリッド構成を決める */
@@ -179,7 +168,6 @@ export default function ZineStory({
   }, [photos, geo]);
 
   const current = pages[Math.min(idx, pages.length - 1)];
-  const mapUrl = useMemo(() => staticMapUrl(geo), [geo]);
   const dateText = useMemo(() => dateRange(photos), [photos]);
   const coverPhoto = photos.find((p) => p.id === board.coverId) ?? photos[0];
 
@@ -337,7 +325,7 @@ export default function ZineStory({
           <PageBody
             page={current}
             title={title}
-            mapUrl={mapUrl}
+            geo={geo}
             dateText={dateText}
             heroPhoto={coverPhoto}
             layout={board.layouts[current.id] ?? 'auto'}
@@ -547,14 +535,14 @@ export default function ZineStory({
 function PageBody({
   page,
   title,
-  mapUrl,
+  geo,
   dateText,
   heroPhoto,
   layout,
 }: {
   page: Page;
   title: string;
-  mapUrl: string | null;
+  geo: GeoPhoto[];
   dateText: string;
   heroPhoto?: PhotoWithUrl;
   layout: LayoutKey;
@@ -579,9 +567,10 @@ function PageBody({
   if (page.kind === 'map') {
     return (
       <div className="relative h-full w-full bg-secondary">
-        {mapUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={mapUrl} alt="旅の地図" className="h-full w-full object-cover" />
+        {geo.length > 0 ? (
+          <div className="pointer-events-none absolute inset-0">
+            <MiniMap geo={geo} />
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
             位置情報のある写真がありません
