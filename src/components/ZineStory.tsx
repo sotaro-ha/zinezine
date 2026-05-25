@@ -2,6 +2,7 @@
 
 import MiniMap from '@/components/MiniMap';
 import { getBrowserSupabase } from '@/lib/supabase';
+import { type ExportPage, exportZinePng } from '@/lib/zine-export';
 import type { PhotoWithUrl } from '@/types/photo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -139,6 +140,7 @@ export default function ZineStory({
   const [selected, setSelected] = useState<string | null>(null);
   const [menu, setMenu] = useState<'none' | 'sticker' | 'layout' | 'cover'>('none');
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const [exporting, setExporting] = useState(false);
 
   const geo = useMemo(
     () => photos.filter((p): p is GeoPhoto => p.lat != null && p.lng != null),
@@ -289,6 +291,44 @@ export default function ZineStory({
           return { ...s, size, rot };
         }),
       );
+    }
+  };
+
+  const onExportPng = async () => {
+    setExporting(true);
+    try {
+      const W = 1240;
+      const scale = size.w > 0 ? W / size.w : 1;
+      const model: ExportPage[] = pages.map((p) => {
+        const items = (board.items[p.id] ?? []).map((it) => ({
+          kind: it.kind,
+          value: it.value,
+          x: it.x,
+          y: it.y,
+          size: it.size * scale,
+          rot: it.rot,
+        }));
+        if (p.kind === 'cover')
+          return { kind: 'cover', title, dateText, heroUrl: coverPhoto?.thumb_url, items };
+        if (p.kind === 'map')
+          return { kind: 'map', geo: geo.map((g) => ({ lng: g.lng, lat: g.lat })), items };
+        const { cols, rows } = gridOf(p.items.length, board.layouts[p.id] ?? 'auto');
+        return {
+          kind: 'day',
+          label: p.label,
+          date: p.date,
+          photoUrls: p.items.map((x) => x.thumb_url),
+          total: p.items.length,
+          cols,
+          rows,
+          items,
+        };
+      });
+      await exportZinePng(model, title || 'zine');
+    } catch {
+      window.alert('書き出しに失敗しました（写真の読み込みに失敗した可能性があります）');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -490,9 +530,19 @@ export default function ZineStory({
 
       {/* 下部ツール */}
       <div className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-between gap-2 p-4">
-        <span className="rounded-full bg-black/45 px-3 py-1 text-white text-xs backdrop-blur">
-          {idx + 1} / {pages.length}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-black/45 px-3 py-1 text-white text-xs backdrop-blur">
+            {idx + 1} / {pages.length}
+          </span>
+          <button
+            type="button"
+            onClick={onExportPng}
+            disabled={exporting}
+            className="flex h-9 items-center rounded-full bg-white/90 px-3 text-black text-xs shadow disabled:opacity-60"
+          >
+            {exporting ? '書き出し中…' : '⬇ 画像保存'}
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           {current.kind === 'day' && (
             <button
