@@ -334,3 +334,19 @@ export async function exportZinePng(pages: ExportPage[], fileBase: string): Prom
   triggerDownload(url, `${fileBase}.png`);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** 各ページを A4 の PDF（1 ページ＝1 ページ）として保存 */
+export async function exportZinePdf(pages: ExportPage[], fileBase: string): Promise<void> {
+  const W = 1240;
+  const canvases = await renderPageCanvases(pages, W);
+  if (canvases.length === 0) return;
+  const { jsPDF } = await import('jspdf');
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pw = pdf.internal.pageSize.getWidth();
+  const ph = pdf.internal.pageSize.getHeight();
+  canvases.forEach((c, i) => {
+    if (i > 0) pdf.addPage();
+    pdf.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pw, ph);
+  });
+  pdf.save(`${fileBase}.pdf`);
+}

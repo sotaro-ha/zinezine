@@ -2,7 +2,7 @@
 
 import MiniMap from '@/components/MiniMap';
 import { getBrowserSupabase } from '@/lib/supabase';
-import { type ExportPage, exportZinePng } from '@/lib/zine-export';
+import { type ExportPage, exportZinePdf, exportZinePng } from '@/lib/zine-export';
 import type { PhotoWithUrl } from '@/types/photo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -138,7 +138,7 @@ export default function ZineStory({
   const [idx, setIdx] = useState(0);
   const [board, setBoard] = useState<Board>({ items: {}, layouts: {}, coverId: null });
   const [selected, setSelected] = useState<string | null>(null);
-  const [menu, setMenu] = useState<'none' | 'sticker' | 'layout' | 'cover'>('none');
+  const [menu, setMenu] = useState<'none' | 'sticker' | 'layout' | 'cover' | 'export'>('none');
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [exporting, setExporting] = useState(false);
 
@@ -294,37 +294,41 @@ export default function ZineStory({
     }
   };
 
-  const onExportPng = async () => {
+  const buildModel = (): ExportPage[] => {
+    const W = 1240;
+    const scale = size.w > 0 ? W / size.w : 1;
+    return pages.map((p) => {
+      const items = (board.items[p.id] ?? []).map((it) => ({
+        kind: it.kind,
+        value: it.value,
+        x: it.x,
+        y: it.y,
+        size: it.size * scale,
+        rot: it.rot,
+      }));
+      if (p.kind === 'cover')
+        return { kind: 'cover', title, dateText, heroUrl: coverPhoto?.thumb_url, items };
+      if (p.kind === 'map')
+        return { kind: 'map', geo: geo.map((g) => ({ lng: g.lng, lat: g.lat })), items };
+      const { cols, rows } = gridOf(p.items.length, board.layouts[p.id] ?? 'auto');
+      return {
+        kind: 'day',
+        label: p.label,
+        date: p.date,
+        photoUrls: p.items.map((x) => x.thumb_url),
+        total: p.items.length,
+        cols,
+        rows,
+        items,
+      };
+    });
+  };
+
+  const runExport = async (fn: (m: ExportPage[], name: string) => Promise<void>) => {
+    setMenu('none');
     setExporting(true);
     try {
-      const W = 1240;
-      const scale = size.w > 0 ? W / size.w : 1;
-      const model: ExportPage[] = pages.map((p) => {
-        const items = (board.items[p.id] ?? []).map((it) => ({
-          kind: it.kind,
-          value: it.value,
-          x: it.x,
-          y: it.y,
-          size: it.size * scale,
-          rot: it.rot,
-        }));
-        if (p.kind === 'cover')
-          return { kind: 'cover', title, dateText, heroUrl: coverPhoto?.thumb_url, items };
-        if (p.kind === 'map')
-          return { kind: 'map', geo: geo.map((g) => ({ lng: g.lng, lat: g.lat })), items };
-        const { cols, rows } = gridOf(p.items.length, board.layouts[p.id] ?? 'auto');
-        return {
-          kind: 'day',
-          label: p.label,
-          date: p.date,
-          photoUrls: p.items.map((x) => x.thumb_url),
-          total: p.items.length,
-          cols,
-          rows,
-          items,
-        };
-      });
-      await exportZinePng(model, title || 'zine');
+      await fn(buildModel(), title || 'zine');
     } catch {
       window.alert('書き出しに失敗しました（写真の読み込みに失敗した可能性があります）');
     } finally {
@@ -467,6 +471,26 @@ export default function ZineStory({
         ›
       </button>
 
+      {/* 書き出しメニュー */}
+      {menu === 'export' && (
+        <div className="absolute bottom-16 left-4 z-40 flex flex-col gap-1 rounded-2xl bg-card/95 p-2 shadow-[var(--shadow-float)] backdrop-blur">
+          <button
+            type="button"
+            onClick={() => runExport(exportZinePng)}
+            className="rounded-xl px-4 py-2 text-left text-sm transition hover:bg-secondary"
+          >
+            🖼 PNG画像（全ページ1枚）
+          </button>
+          <button
+            type="button"
+            onClick={() => runExport(exportZinePdf)}
+            className="rounded-xl px-4 py-2 text-left text-sm transition hover:bg-secondary"
+          >
+            📄 PDF（A4・ページごと）
+          </button>
+        </div>
+      )}
+
       {/* スタンプ・パレット */}
       {menu === 'sticker' && (
         <div className="absolute inset-x-0 bottom-20 z-40 mx-auto flex max-w-md flex-wrap justify-center gap-2 rounded-2xl bg-card/95 p-3 shadow-[var(--shadow-float)] backdrop-blur">
@@ -536,11 +560,11 @@ export default function ZineStory({
           </span>
           <button
             type="button"
-            onClick={onExportPng}
+            onClick={() => setMenu((m) => (m === 'export' ? 'none' : 'export'))}
             disabled={exporting}
             className="flex h-9 items-center rounded-full bg-white/90 px-3 text-black text-xs shadow disabled:opacity-60"
           >
-            {exporting ? '書き出し中…' : '⬇ 画像保存'}
+            {exporting ? '書き出し中…' : '⬇ 保存'}
           </button>
         </div>
         <div className="flex items-center gap-2">
