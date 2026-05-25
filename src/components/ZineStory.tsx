@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
 const STICKERS = ['✨', '❤️', '😊', '📍', '🌿', '☀️', '🎒', '📸', '⭐️', '🗺️', '🌊', '🍜'];
+const A4 = 210 / 297; // 幅 / 高さ
 
 type GeoPhoto = PhotoWithUrl & { lat: number; lng: number };
 type Sticker = { id: string; emoji: string; x: number; y: number; size: number };
@@ -36,22 +37,32 @@ function dateRange(photos: PhotoWithUrl[]): string {
   return min.toDateString() === max.toDateString() ? f(min) : `${f(min)} – ${f(max)}`;
 }
 
-/** 旅程の代表点で MapTiler の静的地図（＝マップのスクリーンショット）を作る */
+/** 旅程の代表点で MapTiler の静的地図（A4 比率）を作る */
 function staticMapUrl(geo: GeoPhoto[]): string | null {
   if (!MAPTILER_KEY || geo.length === 0) return null;
   const step = Math.max(1, Math.ceil(geo.length / 40));
   const pts = geo.filter((_, i) => i % step === 0);
   const coords = pts.map((p) => `${p.lng},${p.lat}`).join('|');
-  const base = `https://api.maptiler.com/maps/streets-v2/static/auto/600x900@2x.png?key=${MAPTILER_KEY}&padding=90`;
+  const base = `https://api.maptiler.com/maps/streets-v2/static/auto/600x848@2x.png?key=${MAPTILER_KEY}&padding=90`;
   return pts.length < 2
     ? `${base}&markers=${coords}`
     : `${base}&path=stroke:0x0a4a4eff|width:5|${coords}`;
 }
 
+/** その日の枚数に応じたコラージュ構成（グリッド列数・行数・先頭の span） */
+function collage(n: number): { cols: number; rows: number; span0: boolean } {
+  if (n <= 1) return { cols: 1, rows: 1, span0: false };
+  if (n === 2) return { cols: 1, rows: 2, span0: false };
+  if (n === 3) return { cols: 2, rows: 2, span0: true };
+  if (n === 4) return { cols: 2, rows: 2, span0: false };
+  if (n <= 6) return { cols: 2, rows: 3, span0: n === 5 };
+  return { cols: 3, rows: 3, span0: false };
+}
+
 /**
- * zine（ストーリー型の提案）。表紙 → 旅の地図 → Day 別ページを自動生成し、
- * Instagram ストーリーのように送りながらスタンプを貼れる（保存される）。
- * ※リアルタイム共同編集は次段。今はスタンプの保存・共有まで。
+ * zine（ストーリー型の提案）。A4 比率のページを画面内にフィットさせ、
+ * 表紙 → 旅の地図 → Day 別コラージュを自動生成。
+ * Instagram ストーリーのように送りながらスタンプを貼れる（保存・共有される）。
  */
 export default function ZineStory({
   tripId,
@@ -63,7 +74,8 @@ export default function ZineStory({
   photos: PhotoWithUrl[];
 }) {
   const supabase = getBrowserSupabase();
-  const stageRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | null>(null);
   const dragId = useRef<string | null>(null);
 
@@ -71,13 +83,13 @@ export default function ZineStory({
   const [stickers, setStickers] = useState<StickerMap>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [palette, setPalette] = useState(false);
+  const [size, setSize] = useState({ w: 0, h: 0 });
 
   const geo = useMemo(
     () => photos.filter((p): p is GeoPhoto => p.lat != null && p.lng != null),
     [photos],
   );
 
-  // ページ自動生成: 表紙 → 地図 → Day別
   const pages = useMemo<Page[]>(() => {
     const groups: { day: string; items: PhotoWithUrl[] }[] = [];
     for (const p of photos) {
@@ -102,8 +114,30 @@ export default function ZineStory({
 
   const current = pages[Math.min(idx, pages.length - 1)];
   const mapUrl = useMemo(() => staticMapUrl(geo), [geo]);
+  const dateText = useMemo(() => dateRange(photos), [photos]);
 
-  // 既存のスタンプを読み込む
+  // A4 をコンテナ内にフィット（レターボックス）
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const fit = () => {
+      const r = el.getBoundingClientRect();
+      const padW = r.width - 28;
+      const padH = r.height - 28;
+      let h = padH;
+      let w = h * A4;
+      if (w > padW) {
+        w = padW;
+        h = w / A4;
+      }
+      setSize({ w: Math.max(0, w), h: Math.max(0, h) });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -142,21 +176,21 @@ export default function ZineStory({
   };
 
   const addSticker = (emoji: string) => {
-    const s: Sticker = { id: crypto.randomUUID(), emoji, x: 50, y: 50, size: 56 };
+    const s: Sticker = { id: crypto.randomUUID(), emoji, x: 50, y: 50, size: 48 };
     updatePageStickers(current.id, (list) => [...list, s]);
     setPalette(false);
     setSelected(s.id);
   };
 
-  const onStagePointerMove = (e: React.PointerEvent) => {
-    if (!dragId.current || !stageRef.current) return;
-    const r = stageRef.current.getBoundingClientRect();
+  const onPagePointerMove = (e: React.PointerEvent) => {
+    if (!dragId.current || !pageRef.current) return;
+    const r = pageRef.current.getBoundingClientRect();
     const x = ((e.clientX - r.left) / r.width) * 100;
     const y = ((e.clientY - r.top) / r.height) * 100;
     updatePageStickers(current.id, (list) =>
       list.map((s) =>
         s.id === dragId.current
-          ? { ...s, x: Math.max(2, Math.min(98, x)), y: Math.max(3, Math.min(97, y)) }
+          ? { ...s, x: Math.max(2, Math.min(98, x)), y: Math.max(2, Math.min(98, y)) }
           : s,
       ),
     );
@@ -165,8 +199,11 @@ export default function ZineStory({
   const pageStickers = stickers[current.id] ?? [];
 
   return (
-    <div className="relative h-full w-full select-none bg-black">
-      {/* 進捗バー（ストーリー風） */}
+    <div
+      ref={containerRef}
+      className="relative flex h-full w-full select-none items-center justify-center bg-neutral-900 p-3.5"
+    >
+      {/* 進捗バー */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex gap-1 p-2">
         {pages.map((p, i) => (
           <span
@@ -176,77 +213,91 @@ export default function ZineStory({
         ))}
       </div>
 
-      {/* ステージ（写真 + スタンプ） */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: ストーリーの送りは左右ボタンでも可能 */}
-      <div
-        ref={stageRef}
-        onPointerMove={onStagePointerMove}
-        onPointerUp={() => {
-          dragId.current = null;
-        }}
-        onClick={() => setSelected(null)}
-        className="relative h-full w-full overflow-hidden"
+      {/* A4 ページ（ステージ） */}
+      {size.w > 0 && (
+        // biome-ignore lint/a11y/useKeyWithClickEvents: 送りは左右ボタンでも可能
+        <div
+          ref={pageRef}
+          onPointerMove={onPagePointerMove}
+          onPointerUp={() => {
+            dragId.current = null;
+          }}
+          onClick={() => setSelected(null)}
+          style={{ width: size.w, height: size.h }}
+          className="relative overflow-hidden rounded-md bg-white shadow-[var(--shadow-float)]"
+        >
+          <PageBody
+            page={current}
+            title={title}
+            mapUrl={mapUrl}
+            dateText={dateText}
+            heroPhoto={photos[0]}
+          />
+
+          {pageStickers.map((s) => (
+            // biome-ignore lint/a11y/useKeyWithClickEvents: ドラッグ可能なスタンプ（削除は×）
+            <div
+              key={s.id}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                dragId.current = s.id;
+                setSelected(s.id);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                left: `${s.x}%`,
+                top: `${s.y}%`,
+                fontSize: s.size,
+                transform: 'translate(-50%, -50%)',
+              }}
+              className={`absolute cursor-grab touch-none active:cursor-grabbing ${
+                selected === s.id ? 'rounded-2xl outline outline-2 outline-accent' : ''
+              }`}
+            >
+              <span className="drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">{s.emoji}</span>
+              {selected === s.id && (
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updatePageStickers(current.id, (list) => list.filter((x) => x.id !== s.id));
+                    setSelected(null);
+                  }}
+                  className="-right-3 -top-3 absolute flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm text-black shadow"
+                  aria-label="スタンプを削除"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 送り（左右） */}
+      <button
+        type="button"
+        aria-label="前のページ"
+        onClick={() => setIdx((i) => Math.max(0, i - 1))}
+        disabled={idx === 0}
+        className="absolute left-2 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-lg shadow disabled:opacity-0"
       >
-        <PageBody page={current} title={title} mapUrl={mapUrl} dateText={dateRange(photos)} />
-
-        {/* スタンプ */}
-        {pageStickers.map((s) => (
-          // biome-ignore lint/a11y/useKeyWithClickEvents: ドラッグ可能なスタンプ（削除は×ボタン）
-          <div
-            key={s.id}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              dragId.current = s.id;
-              setSelected(s.id);
-            }}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              left: `${s.x}%`,
-              top: `${s.y}%`,
-              fontSize: s.size,
-              transform: 'translate(-50%, -50%)',
-            }}
-            className={`absolute cursor-grab touch-none active:cursor-grabbing ${
-              selected === s.id ? 'rounded-2xl outline outline-2 outline-white/80' : ''
-            }`}
-          >
-            <span className="drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">{s.emoji}</span>
-            {selected === s.id && (
-              <button
-                type="button"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updatePageStickers(current.id, (list) => list.filter((x) => x.id !== s.id));
-                  setSelected(null);
-                }}
-                className="-right-3 -top-3 absolute flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm text-black shadow"
-                aria-label="スタンプを削除"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ))}
-
-        {/* 送り（左右タップゾーン） */}
-        <button
-          type="button"
-          aria-label="前のページ"
-          onClick={() => setIdx((i) => Math.max(0, i - 1))}
-          className="absolute inset-y-0 left-0 z-20 w-1/5"
-        />
-        <button
-          type="button"
-          aria-label="次のページ"
-          onClick={() => setIdx((i) => Math.min(pages.length - 1, i + 1))}
-          className="absolute inset-y-0 right-0 z-20 w-1/5"
-        />
-      </div>
+        ‹
+      </button>
+      <button
+        type="button"
+        aria-label="次のページ"
+        onClick={() => setIdx((i) => Math.min(pages.length - 1, i + 1))}
+        disabled={idx >= pages.length - 1}
+        className="absolute right-2 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-lg shadow disabled:opacity-0"
+      >
+        ›
+      </button>
 
       {/* スタンプ・パレット */}
       {palette && (
-        <div className="absolute inset-x-0 bottom-20 z-30 mx-auto flex max-w-md flex-wrap justify-center gap-2 rounded-2xl bg-card/95 p-3 shadow-[var(--shadow-float)] backdrop-blur">
+        <div className="absolute inset-x-0 bottom-20 z-40 mx-auto flex max-w-md flex-wrap justify-center gap-2 rounded-2xl bg-card/95 p-3 shadow-[var(--shadow-float)] backdrop-blur">
           {STICKERS.map((e) => (
             <button
               key={e}
@@ -262,13 +313,13 @@ export default function ZineStory({
 
       {/* 下部ツール */}
       <div className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 p-4">
-        <span className="rounded-full bg-black/40 px-3 py-1 text-xs text-white backdrop-blur">
+        <span className="rounded-full bg-black/45 px-3 py-1 text-white text-xs backdrop-blur">
           {idx + 1} / {pages.length}
         </span>
         <button
           type="button"
           onClick={() => setPalette((v) => !v)}
-          className="flex h-11 items-center gap-1.5 rounded-full bg-white px-5 text-sm font-medium text-black shadow-[var(--shadow-float)]"
+          className="flex h-11 items-center gap-1.5 rounded-full bg-white px-5 font-medium text-black text-sm shadow-[var(--shadow-float)]"
         >
           ✨ スタンプ
         </button>
@@ -277,28 +328,31 @@ export default function ZineStory({
   );
 }
 
-/** ページ本体（種類ごとの見た目） */
 function PageBody({
   page,
   title,
   mapUrl,
   dateText,
+  heroPhoto,
 }: {
   page: Page;
   title: string;
   mapUrl: string | null;
   dateText: string;
+  heroPhoto?: PhotoWithUrl;
 }) {
   if (page.kind === 'cover') {
     return (
-      <div className="relative h-full w-full">
-        {/* 背景 */}
-        <div className="absolute inset-0 bg-gradient-to-br from-accent to-[#06363a]" />
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center text-white">
-          <span className="text-[11px] uppercase tracking-[0.3em] text-white/70">Travel Zine</span>
-          <h2 className="font-serif text-5xl leading-tight">{title}</h2>
-          {dateText && <p className="text-white/80">{dateText}</p>}
-          <span className="mt-4 text-2xl">✦</span>
+      <div className="relative h-full w-full bg-accent">
+        {heroPhoto?.thumb_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={heroPhoto.thumb_url} alt="" className="h-full w-full object-cover" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-black/25" />
+        <div className="absolute inset-x-0 bottom-0 p-6 text-white">
+          <span className="text-[10px] uppercase tracking-[0.3em] text-white/75">Travel Zine</span>
+          <h2 className="mt-1 font-serif text-4xl leading-tight">{title}</h2>
+          {dateText && <p className="mt-1 text-sm text-white/85">{dateText}</p>}
         </div>
       </div>
     );
@@ -311,11 +365,11 @@ function PageBody({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={mapUrl} alt="旅の地図" className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
+          <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
             位置情報のある写真がありません
           </div>
         )}
-        <div className="absolute inset-x-0 top-8 text-center">
+        <div className="absolute inset-x-0 top-5 text-center">
           <span className="rounded-full bg-black/45 px-4 py-1.5 font-serif text-lg text-white backdrop-blur">
             旅の地図
           </span>
@@ -324,36 +378,46 @@ function PageBody({
     );
   }
 
-  // day
-  const hero = page.items[0];
+  // day: コラージュ
+  const { cols, rows, span0 } = collage(page.items.length);
+  const cap = cols * rows;
+  const shown = page.items.slice(0, Math.min(page.items.length, cap));
+  const extra = page.items.length - shown.length;
+
   return (
-    <div className="relative h-full w-full bg-black">
-      {hero?.thumb_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={hero.thumb_url} alt={page.label} className="h-full w-full object-cover" />
-      ) : (
-        <div className="flex h-full items-center justify-center text-white/40">✦</div>
-      )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30" />
-      <div className="absolute left-6 top-12 text-white">
-        <div className="font-serif text-4xl">{page.label}</div>
-        <div className="text-sm text-white/80">{page.date}</div>
-      </div>
-      {/* その日の写真ストリップ */}
-      {page.items.length > 1 && (
-        <div className="absolute inset-x-0 bottom-16 flex gap-2 overflow-x-auto px-6 pb-1">
-          {page.items.slice(1, 10).map((p) => (
-            <img
-              key={p.id}
+    <div className="relative h-full w-full bg-white">
+      <div
+        className="grid h-full w-full gap-1.5 p-2.5"
+        style={{
+          gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`,
+          gridTemplateRows: `repeat(${rows}, minmax(0,1fr))`,
+        }}
+      >
+        {shown.map((p, i) => (
+          <div
+            key={p.id}
+            className={`relative overflow-hidden rounded-sm bg-secondary ${
+              span0 && i === 0 ? 'col-span-2' : ''
+            }`}
+          >
+            {p.thumb_url ? (
               // eslint-disable-next-line @next/next/no-img-element
-              src={p.thumb_url}
-              alt=""
-              loading="lazy"
-              className="h-16 w-16 shrink-0 rounded-lg border-2 border-white/80 object-cover"
-            />
-          ))}
-        </div>
-      )}
+              <img src={p.thumb_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full items-center justify-center text-accent/40">✦</div>
+            )}
+            {i === shown.length - 1 && extra > 0 && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/45 font-medium text-white">
+                +{extra}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="absolute top-3 left-3 rounded-full bg-black/45 px-3 py-1 text-white backdrop-blur">
+        <span className="font-serif text-base">{page.label}</span>
+        <span className="ml-2 text-[11px] text-white/80">{page.date}</span>
+      </div>
     </div>
   );
 }
